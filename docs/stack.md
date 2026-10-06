@@ -33,3 +33,11 @@ Upgrade the versions only between milestones. Upgrade all crates of this table i
 Before an upgrade, make sure that each crate supports the new Bevy version. If one crate does not support it, do not upgrade.
 
 If `bevy_replicon_renet` moves to `steamworks` 0.13, examine `bevy_steamworks` again.
+
+## Fast development builds
+
+To run the game during development, use `cargo run --features dev`.
+
+The `dev` feature links Bevy as a shared library. Then a rebuild compiles and links only the game code.
+
+Do not use the `dev` feature for a release build. A release build includes Bevy in the program file.

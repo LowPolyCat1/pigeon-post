@@ -13,3 +13,8 @@ bevy_replicon = "=0.44.2"
 bevy_replicon_renet = { version = "=0.20.0", features = ["renet_steam"] }
 # renet_steam requires steamworks 0.12; bevy_steamworks requires 0.13, so it is not used.
 steamworks = "=0.12.2"
+
+[features]
+# Builds Bevy as a shared library, so a rebuild relinks only the game code.
+# Use it for development only: `cargo run --features dev`. A release build must not use it.
+dev = ["bevy/dynamic_linking"]
