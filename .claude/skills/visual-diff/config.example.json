@@ -1,0 +1,11 @@
+{
+  "$comment": "Copy to your project root as visual-diff.config.json and edit. localBase/liveBase are the two renderings to compare; pages share `path` across both. thresholdPct is the pass gate (default 0.1). You can instead keep pages in a sibling visual-diff.pages.json. A page may add an optional `sections` array (e.g. [\".hero\", \".pricing\"]) to override --sections auto-detection.",
+  "localBase": "http://127.0.0.1:8765",
+  "liveBase": "https://staging.example.com",
+  "thresholdPct": 0.1,
+  "pages": [
+    { "slug": "homepage", "path": "/" },
+    { "slug": "pricing", "path": "/pricing/" },
+    { "slug": "about", "path": "/about/" }
+  ]
+}

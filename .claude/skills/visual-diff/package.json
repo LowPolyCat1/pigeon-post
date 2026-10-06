@@ -1,0 +1,24 @@
+{
+  "name": "visual-diff-skill",
+  "version": "1.0.0",
+  "description": "Portable odiff-powered visual-diff skill: compare a local rendering of a set of pages against a live rendering and report which pages match.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wpfyorg/visual-diff-skill.git"
+  },
+  "bin": {
+    "visual-diff": "scripts/visual-diff.mjs"
+  },
+  "scripts": {
+    "vdiff": "node scripts/visual-diff.mjs",
+    "vdiff:mobile": "node scripts/visual-diff.mjs --mobile",
+    "vdiff:full": "node scripts/visual-diff.mjs --full"
+  },
+  "dependencies": {
+    "odiff-bin": "^3.2.1",
+    "playwright": "^1.61.0",
+    "pngjs": "^7.0.0"
+  }
+}
