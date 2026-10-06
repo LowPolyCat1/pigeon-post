@@ -13,10 +13,3 @@ bevy_replicon = "=0.44.2"
 bevy_replicon_renet = { version = "=0.20.0", features = ["renet_steam"] }
 # renet_steam requires steamworks 0.12; bevy_steamworks requires 0.13, so it is not used.
 steamworks = "=0.12.2"
-
-# Bevy is slow without optimization; the game code stays debuggable.
-[profile.dev]
-opt-level = 1
-
-[profile.dev.package."*"]
-opt-level = 3
