@@ -1,11 +1,14 @@
 //! The wind and its picture: thin white streaks that drift with the wind, curl, and fade.
-//! Each instance draws its own streaks. Only the wind is the same on all instances.
+//!
+//! The wind is a function of the clock of the host, so each instance computes the same wind
+//! without a network message. Each instance draws its own streaks.
 
 use std::f32::consts::TAU;
 
 use bevy::prelude::*;
 
 use crate::cloud_sea::SEA_LEVEL;
+use crate::sea_render::{SeaTime, update_sea_time};
 
 /// The number of streaks in the air at one time.
 const STREAK_COUNT: u32 = 24;
@@ -18,6 +21,36 @@ const MAX_ALPHA: f32 = 0.85;
 const LINE_WIDTH: f32 = 3.0;
 /// A streak never comes nearer than this to the cloud sea.
 const SEA_CLEARANCE: f32 = 1.5;
+
+/// The mean direction of the wind, in radians from world +X toward world +Z.
+const BASE_DIRECTION: f32 = -0.38;
+/// The mean speed of the air, in meters per second: a gentle breeze.
+const BASE_STRENGTH: f32 = 4.0;
+/// How far the direction turns to each side of the mean, in radians (60°).
+const DIRECTION_SWING: f32 = 1.05;
+/// The time of one slow turn, in seconds. A crew has time to see the change coming.
+const DIRECTION_PERIOD: f32 = 180.0;
+/// The slow change of the strength, as a fraction of the mean.
+const STRENGTH_SWING: f32 = 0.3;
+const STRENGTH_PERIOD: f32 = 45.0;
+/// A gust adds up to this fraction of the wind for a few seconds.
+const GUST_PEAK: f32 = 0.8;
+const GUST_PERIOD: f32 = 7.0;
+/// The share of the gust noise below which there is no gust, so gusts come and go.
+const GUST_THRESHOLD: f32 = 0.6;
+
+/// Updates [`Wind`] from the clock of the host. Without the network, the local clock is the
+/// clock of the host.
+pub struct WindPlugin;
+
+impl Plugin for WindPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<Wind>()
+            // After the host clock of this frame, before every reader in Update and in the
+            // fixed steps of this frame.
+            .add_systems(PreUpdate, update_wind.after(update_sea_time));
+    }
+}
 
 pub struct WindLinesPlugin;
 
@@ -42,7 +75,7 @@ impl Plugin for WindLinesPlugin {
     }
 }
 
-/// The wind of the world. The value is a constant, so every instance has the same wind.
+/// The wind of the world at this moment. [`WindPlugin`] updates it from [`wind_at`].
 #[derive(Resource, Debug, Clone, Copy, PartialEq)]
 pub struct Wind {
     /// A unit vector on the XZ plane: x along world +X, y along world +Z.
@@ -52,12 +85,8 @@ pub struct Wind {
 }
 
 impl Default for Wind {
-    /// A gentle breeze.
     fn default() -> Self {
-        Self {
-            direction: Vec2::new(1.0, -0.4).normalize(),
-            strength: 4.0,
-        }
+        wind_at(0.0)
     }
 }
 
@@ -65,6 +94,37 @@ impl Wind {
     pub fn velocity(&self) -> Vec3 {
         Vec3::new(self.direction.x, 0.0, self.direction.y) * self.strength
     }
+}
+
+/// The wind at `time` seconds on the clock of the host. The direction turns slowly, the
+/// strength swells and fades, and gusts come and go.
+pub fn wind_at(time: f32) -> Wind {
+    let angle = BASE_DIRECTION + DIRECTION_SWING * signed_noise(time / DIRECTION_PERIOD, 1);
+    let swell = 1.0 + STRENGTH_SWING * signed_noise(time / STRENGTH_PERIOD, 2);
+    let gust = ((noise(time / GUST_PERIOD, 3) - GUST_THRESHOLD) / (1.0 - GUST_THRESHOLD)).max(0.0);
+    Wind {
+        direction: Vec2::from_angle(angle),
+        strength: BASE_STRENGTH * swell * (1.0 + GUST_PEAK * gust),
+    }
+}
+
+/// Smooth one-dimensional value noise in [0, 1]. One unit of `x` is one random step.
+fn noise(x: f32, salt: u32) -> f32 {
+    let cell = x.floor();
+    // Two's complement keeps a negative cell distinct from the positive cells.
+    let index = cell as i32 as u32;
+    let a = random(index, salt);
+    let b = random(index.wrapping_add(1), salt);
+    a + (b - a) * smoothstep(x - cell)
+}
+
+fn signed_noise(x: f32, salt: u32) -> f32 {
+    noise(x, salt) * 2.0 - 1.0
+}
+
+fn update_wind(time: Res<Time>, host_clock: Option<Res<SeaTime>>, mut wind: ResMut<Wind>) {
+    let now = host_clock.map_or(time.elapsed_secs(), |clock| clock.now());
+    *wind = wind_at(now);
 }
 
 #[derive(Default, Reflect, GizmoConfigGroup)]
@@ -84,6 +144,9 @@ struct Loop {
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Streak {
     generation: u32,
+    /// The wind at the birth. A gust or a turn of the wind thus does not bend a streak that
+    /// is already in the air; the next streaks show the change.
+    wind: Wind,
     origin: Vec3,
     /// The time of the birth on the clock of [`Time`].
     birth: f32,
@@ -154,6 +217,7 @@ fn new_streak(index: u32, generation: u32, center: Vec3, wind: &Wind, now: f32) 
 
     Streak {
         generation,
+        wind: *wind,
         origin,
         birth: now,
         lifetime,
@@ -165,7 +229,8 @@ fn new_streak(index: u32, generation: u32, center: Vec3, wind: &Wind, now: f32) 
 }
 
 /// The position of `streak` at `age` seconds after its birth.
-fn streak_position(streak: &Streak, wind: &Wind, age: f32) -> Vec3 {
+fn streak_position(streak: &Streak, age: f32) -> Vec3 {
+    let wind = &streak.wind;
     let forward = Vec3::new(wind.direction.x, 0.0, wind.direction.y);
     let side = Vec3::Y.cross(forward);
     let curl = streak.curl_amplitude
@@ -211,12 +276,7 @@ fn renew_streaks(
     }
 }
 
-fn draw_streaks(
-    time: Res<Time>,
-    wind: Res<Wind>,
-    streaks: Res<Streaks>,
-    mut gizmos: Gizmos<WindGizmos>,
-) {
+fn draw_streaks(time: Res<Time>, streaks: Res<Streaks>, mut gizmos: Gizmos<WindGizmos>) {
     let now = time.elapsed_secs();
     for streak in &streaks.0 {
         let age = now - streak.birth;
@@ -227,7 +287,7 @@ fn draw_streaks(
         gizmos.linestrip_gradient((0..=TRAIL_POINTS).map(|k| {
             // u is 0 at the tail and 1 at the head. The tail fades over a longer part.
             let u = k as f32 / TRAIL_POINTS as f32;
-            let point = streak_position(streak, &wind, age - TRAIL_TIME * (1.0 - u));
+            let point = streak_position(streak, age - TRAIL_TIME * (1.0 - u));
             let alpha = MAX_ALPHA * life * fade(u, 0.6, 0.15);
             (point, Color::srgba(1.0, 1.0, 1.0, alpha))
         }));
@@ -269,18 +329,18 @@ mod tests {
         let wind = Wind::default();
         let mut streak = streak();
         streak.looping = None;
-        let start = streak_position(&streak, &wind, 0.0);
-        let end = streak_position(&streak, &wind, 4.0);
+        let start = streak_position(&streak, 0.0);
+        let end = streak_position(&streak, 4.0);
         let along = (end - start).dot(wind.velocity().normalize());
-        // The curl is less than 1 m, so the drift of 16 m dominates.
-        assert!(along > 14.0 && along < 18.0, "{along}");
+        // The curl is less than 1 m, so the drift of the wind over 4 s dominates.
+        let drift = wind.strength * 4.0;
+        assert!((along - drift).abs() < 2.0, "{along} vs {drift}");
         let across = (end - start).reject_from(wind.velocity()).length();
         assert!(across < 3.0, "{across}");
     }
 
     #[test]
     fn loop_returns_to_the_plain_path() {
-        let wind = Wind::default();
         let mut with_loop = streak();
         let looping = Loop {
             start: 1.0,
@@ -291,20 +351,18 @@ mod tests {
         let mut plain = with_loop;
         plain.looping = None;
         let after = 2.5;
-        let delta =
-            streak_position(&with_loop, &wind, after) - streak_position(&plain, &wind, after);
+        let delta = streak_position(&with_loop, after) - streak_position(&plain, after);
         assert!(delta.length() < 1e-4, "{delta}");
-        let middle = streak_position(&with_loop, &wind, 1.5) - streak_position(&plain, &wind, 1.5);
+        let middle = streak_position(&with_loop, 1.5) - streak_position(&plain, 1.5);
         assert!((middle.y - 2.0 * looping.radius).abs() < 1e-4, "{middle}");
     }
 
     #[test]
     fn streaks_are_deterministic() {
         assert_eq!(streak(), streak());
-        let wind = Wind::default();
         assert_eq!(
-            streak_position(&streak(), &wind, 1.3),
-            streak_position(&streak(), &wind, 1.3)
+            streak_position(&streak(), 1.3),
+            streak_position(&streak(), 1.3)
         );
     }
 
@@ -325,6 +383,58 @@ mod tests {
                 let streak = new_streak(index, generation, low_camera, &wind, 0.0);
                 assert!(streak.origin.y >= SEA_LEVEL + SEA_CLEARANCE);
             }
+        }
+    }
+
+    #[test]
+    fn streak_keeps_the_wind_of_its_birth() {
+        let calm = Wind {
+            direction: Vec2::X,
+            strength: 2.0,
+        };
+        let streak = new_streak(1, 1, Vec3::ZERO, &calm, 0.0);
+        assert_eq!(streak.wind, calm);
+    }
+
+    #[test]
+    fn wind_is_deterministic() {
+        assert_eq!(wind_at(123.4), wind_at(123.4));
+    }
+
+    #[test]
+    fn wind_stays_in_its_range() {
+        let base = Vec2::from_angle(BASE_DIRECTION);
+        for step in 0..2000 {
+            let wind = wind_at(step as f32 * 0.7 - 50.0);
+            assert!((wind.direction.length() - 1.0).abs() < 1e-4);
+            assert!(wind.direction.angle_to(base).abs() <= DIRECTION_SWING + 1e-3);
+            let low = BASE_STRENGTH * (1.0 - STRENGTH_SWING);
+            let high = BASE_STRENGTH * (1.0 + STRENGTH_SWING) * (1.0 + GUST_PEAK);
+            assert!((low..=high).contains(&wind.strength), "{}", wind.strength);
+        }
+    }
+
+    #[test]
+    fn wind_turns_and_gusts_over_time() {
+        let start = wind_at(0.0);
+        let later = wind_at(DIRECTION_PERIOD * 1.5);
+        assert!(start.direction.angle_to(later.direction).abs() > 0.05);
+        let gusty = (0..1000).any(|step| {
+            let time = step as f32 * 0.5;
+            let calm = BASE_STRENGTH * (1.0 + STRENGTH_SWING);
+            wind_at(time).strength > calm
+        });
+        assert!(gusty, "no gust in 500 s");
+    }
+
+    #[test]
+    fn noise_is_continuous() {
+        for step in 0..1000 {
+            let x = step as f32 * 0.013 - 3.0;
+            assert!(
+                (noise(x, 9) - noise(x + 0.001, 9)).abs() < 0.01,
+                "jump at {x}"
+            );
         }
     }
 

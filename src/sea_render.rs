@@ -37,7 +37,9 @@ impl Plugin for CloudSeaRenderPlugin {
                 FixedUpdate,
                 tick_clock.run_if(|mode: Res<NetMode>| mode.is_authority()),
             )
-            .add_systems(Update, (update_sea_time, update_material).chain());
+            // Before Update, so every system in Update reads the clock of this frame.
+            .add_systems(PreUpdate, update_sea_time)
+            .add_systems(Update, update_material);
     }
 }
 
@@ -50,9 +52,10 @@ pub struct CloudSea;
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq)]
 pub struct SeaClock(pub f32);
 
-/// The wave time that this instance draws.
+/// The clock of the host on this instance, in seconds. The waves and the wind read it, so each
+/// player sees the same waves and the same wind.
 #[derive(Resource, Debug, Default)]
-struct SeaTime {
+pub struct SeaTime {
     /// The host clock minus the local clock. Zero on the authority.
     offset: f32,
     now: f32,
@@ -73,6 +76,12 @@ pub struct CloudSeaMaterial {
     waves: WaveUniform,
     #[uniform(1)]
     style: StyleUniform,
+}
+
+impl SeaTime {
+    pub fn now(&self) -> f32 {
+        self.now
+    }
 }
 
 impl Material for CloudSeaMaterial {
@@ -117,7 +126,7 @@ fn tick_clock(time: Res<Time>, mut clock: Single<&mut SeaClock>) {
     clock.0 = time.elapsed_secs();
 }
 
-fn update_sea_time(
+pub fn update_sea_time(
     time: Res<Time>,
     mode: Res<NetMode>,
     clock: Option<Single<&SeaClock, Changed<SeaClock>>>,
