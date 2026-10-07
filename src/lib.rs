@@ -7,6 +7,7 @@ pub mod net;
 pub mod pigeon;
 pub mod props;
 pub mod sea_render;
+pub mod ship;
 pub mod stamina;
 pub mod test_level;
 pub mod waves;

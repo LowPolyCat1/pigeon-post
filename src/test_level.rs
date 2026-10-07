@@ -6,9 +6,11 @@ use bevy::prelude::*;
 use crate::net::LocalPigeon;
 use crate::pigeon::{CAPSULE_LENGTH, Pigeon, RADIUS};
 use crate::props::{CRATE_SIZE, Crate};
+use crate::ship::{HULL_SIZE, RAIL_HEIGHT, Ship};
 
 const CAMERA_OFFSET: Vec3 = Vec3::new(0.0, 4.0, 8.0);
-const ISLAND_SIZE: Vec3 = Vec3::new(20.0, 1.0, 20.0);
+/// Deep enough to reach into the cloud sea, so the ship cannot drift under the island.
+const ISLAND_SIZE: Vec3 = Vec3::new(20.0, 6.0, 20.0);
 
 pub struct TestLevelPlugin;
 
@@ -17,6 +19,7 @@ impl Plugin for TestLevelPlugin {
         app.add_systems(Startup, spawn_level)
             .add_observer(add_pigeon_mesh)
             .add_observer(add_crate_mesh)
+            .add_observer(add_ship_mesh)
             .add_systems(
                 PostUpdate,
                 follow_pigeon.before(TransformSystems::Propagate),
@@ -87,6 +90,41 @@ fn add_crate_mesh(
         Mesh3d(meshes.add(Cuboid::from_length(CRATE_SIZE))),
         MeshMaterial3d(materials.add(Color::srgb(0.7, 0.5, 0.25))),
     ));
+}
+
+/// The hull and the rails of [`crate::ship::ship_collider`], as one mesh each.
+fn add_ship_mesh(
+    add: On<Add, Ship>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let hull = materials.add(Color::srgb(0.45, 0.3, 0.2));
+    let rail = materials.add(Color::srgb(0.75, 0.6, 0.4));
+    let half = HULL_SIZE / 2.0;
+    let rail_y = half.y + RAIL_HEIGHT / 2.0;
+    let side = meshes.add(Cuboid::new(0.15, RAIL_HEIGHT, HULL_SIZE.z));
+    let end = meshes.add(Cuboid::new(HULL_SIZE.x, RAIL_HEIGHT, 0.15));
+    commands
+        .entity(add.entity)
+        .insert((
+            Mesh3d(meshes.add(Cuboid::from_size(HULL_SIZE))),
+            MeshMaterial3d(hull),
+        ))
+        .with_children(|ship| {
+            for (mesh, x, z) in [
+                (side.clone(), -half.x, 0.0),
+                (side.clone(), half.x, 0.0),
+                (end.clone(), 0.0, -half.z),
+                (end.clone(), 0.0, half.z),
+            ] {
+                ship.spawn((
+                    Mesh3d(mesh),
+                    MeshMaterial3d(rail.clone()),
+                    Transform::from_xyz(x, rail_y, z),
+                ));
+            }
+        });
 }
 
 /// The offset is constant, so the camera keeps the rotation it spawned with.
