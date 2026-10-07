@@ -4,6 +4,8 @@ use bevy_replicon::prelude::*;
 use bevy_replicon_renet::RepliconRenetPlugins;
 use pigeon_post::cloud_sea::CloudSeaPlugin;
 use pigeon_post::controls::ControlsPlugin;
+use pigeon_post::engine::EnginePlugin;
+use pigeon_post::engine_render::EngineRenderPlugin;
 use pigeon_post::first_person::FirstPersonPlugin;
 use pigeon_post::grab::GrabPlugin;
 use pigeon_post::helm::HelmPlugin;
@@ -52,6 +54,8 @@ fn main() -> AppExit {
             GrabPlugin,
             ControlsPlugin,
             HelmPlugin,
+            EnginePlugin,
+            EngineRenderPlugin,
         ))
         .add_systems(Startup, start_network)
         .add_systems(Update, read_keyboard)
