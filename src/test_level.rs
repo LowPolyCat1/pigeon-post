@@ -1,11 +1,13 @@
 //! The meshes of the replicated entities and the camera. `start_island` builds the scene,
 //! and `first_person` moves the camera.
 
+use std::f32::consts::FRAC_PI_2;
+
 use bevy::prelude::*;
 
 use crate::pigeon::{CAPSULE_LENGTH, Pigeon, RADIUS};
 use crate::props::{CRATE_SIZE, Crate};
-use crate::ship::{HULL_SIZE, RAIL_HEIGHT, Ship};
+use crate::ship::{Mount, RAIL_HEIGHT, ShipClass};
 
 pub struct TestLevelPlugin;
 
@@ -47,95 +49,194 @@ fn add_crate_mesh(
     ));
 }
 
-/// The hull and the rails of [`crate::ship::ship_collider`], and the rigging of a skyship.
+/// The hull and the rails of [`crate::ship::ship_collider`], the rigging of a skyship, and a
+/// placeholder at each mount of the [`crate::ship::ShipLayout`]. The class arrives with the
+/// ship on a client too, so each instance builds the right ship.
 fn add_ship_mesh(
-    add: On<Add, Ship>,
+    add: On<Add, ShipClass>,
+    classes: Query<&ShipClass>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    let Ok(&class) = classes.get(add.entity) else {
+        return;
+    };
+    let layout = class.layout();
+    let size = layout.hull;
+    let half = size / 2.0;
+    let deck = half.y;
     let hull = materials.add(Color::srgb(0.45, 0.3, 0.2));
     let rail = materials.add(Color::srgb(0.75, 0.6, 0.4));
     let stripe = materials.add(Color::srgb(0.85, 0.2, 0.15));
     let canvas = materials.add(Color::srgb(0.97, 0.94, 0.84));
-    let half = HULL_SIZE / 2.0;
-    let rail_y = half.y + RAIL_HEIGHT / 2.0;
-    let side = meshes.add(Cuboid::new(0.15, RAIL_HEIGHT, HULL_SIZE.z));
-    let end = meshes.add(Cuboid::new(HULL_SIZE.x, RAIL_HEIGHT, 0.15));
 
     // Only pictures: the collider of the ship is the hull and the rails. The parts below have
     // no mass, so the buoyancy of the hull stays as tuned.
-    let mast_height = 7.0;
-    let mast_foot = half.y;
-    let parts = [
+    let mut parts = vec![
         // A red stripe along the hull, the color of the Pigeon Postal Service.
         (
-            meshes.add(Cuboid::new(HULL_SIZE.x + 0.04, 0.3, HULL_SIZE.z + 0.04)),
+            meshes.add(Cuboid::new(size.x + 0.04, 0.3, size.z + 0.04)),
             stripe.clone(),
-            Transform::from_xyz(0.0, half.y - 0.45, 0.0),
-        ),
-        (
-            meshes.add(Cylinder::new(0.15, mast_height).mesh().resolution(8)),
-            rail.clone(),
-            Transform::from_xyz(0.0, mast_foot + mast_height / 2.0, -0.5),
-        ),
-        (
-            meshes.add(Cuboid::new(3.2, 3.6, 0.08)),
-            canvas,
-            Transform::from_xyz(0.0, mast_foot + 3.6, -0.3),
-        ),
-        // The crow's nest at the top of the mast.
-        (
-            meshes.add(Cylinder::new(0.7, 0.6).mesh().resolution(10)),
-            rail.clone(),
-            Transform::from_xyz(0.0, mast_foot + mast_height - 0.6, -0.5),
-        ),
-        (
-            meshes.add(Cuboid::new(0.05, 0.5, 0.9)),
-            stripe.clone(),
-            Transform::from_xyz(0.0, mast_foot + mast_height + 0.25, -0.05),
-        ),
-        // A cabin at the stern for the map table.
-        (
-            meshes.add(Cuboid::new(2.6, 1.4, 2.0)),
-            hull.clone(),
-            Transform::from_xyz(0.0, mast_foot + 0.7, half.z - 1.3),
-        ),
-        (
-            meshes.add(Cuboid::new(2.9, 0.15, 2.3)),
-            stripe,
-            Transform::from_xyz(0.0, mast_foot + 1.47, half.z - 1.3),
-        ),
-        // The bowsprit points forward, along -Z.
-        (
-            meshes.add(Cylinder::new(0.1, 3.0).mesh().resolution(6)),
-            rail.clone(),
-            Transform::from_xyz(0.0, mast_foot + 0.3, -half.z - 1.0)
-                .with_rotation(Quat::from_rotation_x(-1.2)),
+            Transform::from_xyz(0.0, deck - 0.45, 0.0),
         ),
     ];
+    let rail_y = deck + RAIL_HEIGHT / 2.0;
+    let side = meshes.add(Cuboid::new(0.15, RAIL_HEIGHT, size.z));
+    let end = meshes.add(Cuboid::new(size.x, RAIL_HEIGHT, 0.15));
+    for (mesh, x, z) in [
+        (side.clone(), -half.x, 0.0),
+        (side, half.x, 0.0),
+        (end.clone(), 0.0, -half.z),
+        (end, 0.0, half.z),
+    ] {
+        parts.push((mesh, rail.clone(), Transform::from_xyz(x, rail_y, z)));
+    }
+
+    // The main mast is the tallest. The sails hang just aft of each mast.
+    for (index, mast) in layout.masts.iter().enumerate() {
+        let height = if index == 0 {
+            layout.mast_height
+        } else {
+            layout.mast_height * 0.85
+        };
+        let foot = mast.translation;
+        parts.push((
+            meshes.add(Cylinder::new(0.15, height).mesh().resolution(8)),
+            rail.clone(),
+            Transform::from_translation(foot + Vec3::Y * height / 2.0),
+        ));
+        parts.push((
+            meshes.add(Cuboid::new(size.x * 0.8, height * 0.5, 0.08)),
+            canvas.clone(),
+            Transform::from_translation(foot + Vec3::new(0.0, height * 0.52, 0.2)),
+        ));
+    }
+    let nest = layout.crows_nest.translation;
+    parts.push((
+        meshes.add(Cylinder::new(0.7, 0.6).mesh().resolution(10)),
+        rail.clone(),
+        Transform::from_translation(nest),
+    ));
+    parts.push((
+        meshes.add(Cuboid::new(0.05, 0.5, 0.9)),
+        stripe.clone(),
+        Transform::from_translation(nest + Vec3::new(0.0, 0.85, 0.45)),
+    ));
+
+    // A cabin at the stern around the map table. It is open toward the bow, so the table
+    // shows.
+    let cabin = layout.cabin;
+    let table = layout.map_table.translation;
+    for (mesh, offset) in [
+        (
+            Cuboid::new(cabin.x, cabin.y, 0.15),
+            Vec3::new(0.0, cabin.y / 2.0, cabin.z / 2.0),
+        ),
+        (
+            Cuboid::new(0.15, cabin.y, cabin.z),
+            Vec3::new(-cabin.x / 2.0, cabin.y / 2.0, 0.0),
+        ),
+        (
+            Cuboid::new(0.15, cabin.y, cabin.z),
+            Vec3::new(cabin.x / 2.0, cabin.y / 2.0, 0.0),
+        ),
+    ] {
+        parts.push((
+            meshes.add(mesh),
+            hull.clone(),
+            Transform::from_translation(table + offset),
+        ));
+    }
+    parts.push((
+        meshes.add(Cuboid::new(cabin.x + 0.3, 0.15, cabin.z + 0.3)),
+        stripe.clone(),
+        Transform::from_translation(table + Vec3::Y * (cabin.y + 0.07)),
+    ));
+
+    // The bowsprit points forward, along -Z.
+    let bowsprit = 0.3 * size.z;
+    parts.push((
+        meshes.add(Cylinder::new(0.1, bowsprit).mesh().resolution(6)),
+        rail.clone(),
+        Transform::from_xyz(0.0, deck + 0.3, -half.z - bowsprit / 3.0)
+            .with_rotation(Quat::from_rotation_x(-1.2)),
+    ));
+
+    for (mount, transform) in layout.mounts() {
+        if let Some((mesh, color, offset)) = mount_marker(mount) {
+            parts.push((
+                meshes.add(mesh),
+                materials.add(color),
+                transform * Transform::from_translation(offset),
+            ));
+        }
+    }
 
     commands
         .entity(add.entity)
         .insert((
-            Mesh3d(meshes.add(Cuboid::from_size(HULL_SIZE))),
+            Mesh3d(meshes.add(Cuboid::from_size(size))),
             MeshMaterial3d(hull),
         ))
         .with_children(|ship| {
-            for (mesh, x, z) in [
-                (side.clone(), -half.x, 0.0),
-                (side.clone(), half.x, 0.0),
-                (end.clone(), 0.0, -half.z),
-                (end.clone(), 0.0, half.z),
-            ] {
-                ship.spawn((
-                    Mesh3d(mesh),
-                    MeshMaterial3d(rail.clone()),
-                    Transform::from_xyz(x, rail_y, z),
-                ));
-            }
             for (mesh, material, transform) in parts {
                 ship.spawn((Mesh3d(mesh), MeshMaterial3d(material), transform));
             }
         });
+}
+
+/// A placeholder shape for the part at a mount, until the part has a model. The offset
+/// lifts the shape onto the mount surface. The masts and the crow's nest have a full mesh.
+fn mount_marker(mount: Mount) -> Option<(Mesh, Color, Vec3)> {
+    let brass = Color::srgb(0.85, 0.65, 0.2);
+    let iron = Color::srgb(0.2, 0.2, 0.22);
+    let facing_z = Quat::from_rotation_x(FRAC_PI_2);
+    let marker = match mount {
+        Mount::Mast | Mount::CrowsNest => return None,
+        Mount::Helm => (
+            Mesh::from(Cylinder::new(0.5, 0.08)).rotated_by(facing_z),
+            Color::srgb(0.55, 0.35, 0.15),
+            Vec3::Y * 0.9,
+        ),
+        Mount::Furnace => (Cuboid::new(1.0, 1.2, 1.0).into(), iron, Vec3::Y * 0.6),
+        Mount::CoalBunker => (
+            Cuboid::new(0.9, 0.7, 0.9).into(),
+            Color::srgb(0.1, 0.1, 0.1),
+            Vec3::Y * 0.35,
+        ),
+        Mount::ThrottleLever => (
+            Cuboid::new(0.1, 0.8, 0.1).into(),
+            Color::srgb(0.95, 0.8, 0.1),
+            Vec3::Y * 0.4,
+        ),
+        Mount::IgnitionLever => (
+            Cuboid::new(0.1, 0.8, 0.1).into(),
+            Color::srgb(0.9, 0.1, 0.1),
+            Vec3::Y * 0.4,
+        ),
+        Mount::Propeller => (
+            Mesh::from(Cylinder::new(0.6, 0.1)).rotated_by(facing_z),
+            iron,
+            Vec3::Z * 0.1,
+        ),
+        Mount::AnchorWinch => (
+            Mesh::from(Cylinder::new(0.3, 1.0)).rotated_by(Quat::from_rotation_z(FRAC_PI_2)),
+            iron,
+            Vec3::Y * 0.4,
+        ),
+        Mount::Bell => (Sphere::new(0.25).into(), brass, Vec3::Y * 1.2),
+        Mount::SpeakingTube => (Cylinder::new(0.08, 1.0).into(), brass, Vec3::Y * 0.5),
+        Mount::CargoHook => (
+            Sphere::new(0.12).into(),
+            Color::srgb(0.6, 0.6, 0.65),
+            Vec3::Y * 0.12,
+        ),
+        Mount::MapTable => (
+            Cuboid::new(1.2, 0.8, 0.8).into(),
+            Color::srgb(0.2, 0.5, 0.3),
+            Vec3::Y * 0.4,
+        ),
+    };
+    Some(marker)
 }
