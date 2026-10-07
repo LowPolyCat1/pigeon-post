@@ -1,7 +1,9 @@
-//! The pigeon: a dynamic rigid body that walks and jumps.
+//! The pigeon: a dynamic rigid body that walks, jumps, flaps and glides.
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
+
+use crate::stamina::Stamina;
 
 pub const RADIUS: f32 = 0.3;
 /// Length of the straight part of the capsule, without the two caps.
@@ -12,6 +14,15 @@ const GROUND_ACCELERATION: f32 = 40.0;
 /// Weaker than on the ground, so a jump or a shove keeps its momentum.
 const AIR_ACCELERATION: f32 = 10.0;
 pub const JUMP_SPEED: f32 = 5.5;
+/// Vertical speed a flap sets. Lower than a jump, so flying is clumsier than walking.
+pub const FLAP_SPEED: f32 = 4.5;
+pub const FLAP_COST: f32 = 0.2;
+/// Fastest fall while gliding, in m/s.
+pub const GLIDE_FALL_SPEED: f32 = 1.5;
+/// Stamina per second while gliding. A full bar glides for about 6 seconds.
+const GLIDE_DRAIN: f32 = 0.15;
+/// Stamina per second on the ground. An empty bar is full again after 2 seconds.
+const GROUND_REFILL: f32 = 0.5;
 /// Gap below the capsule that still counts as standing on the ground.
 const GROUND_PROBE_DISTANCE: f32 = 0.1;
 /// The probe sphere is a bit thinner than the capsule, so a wall does not count as ground.
@@ -22,12 +33,15 @@ pub struct PigeonPlugin;
 
 impl Plugin for PigeonPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, (update_grounded, walk, jump).chain());
+        app.add_systems(
+            FixedUpdate,
+            (update_grounded, walk, jump_or_flap, glide, refill_on_ground).chain(),
+        );
     }
 }
 
 #[derive(Component)]
-#[require(PigeonInput, Grounded)]
+#[require(PigeonInput, Grounded, Stamina)]
 pub struct Pigeon;
 
 /// The input for the next fixed step. The simulation reads this, never the keyboard,
@@ -39,6 +53,8 @@ pub struct PigeonInput {
     /// Set on the frame of the press. A press can fall between two fixed steps,
     /// so it stays set until the next fixed step consumes it.
     pub jump: bool,
+    /// Held down. Slows a fall while the pigeon is in the air.
+    pub glide: bool,
 }
 
 #[derive(Component, Default, Debug)]
@@ -84,6 +100,7 @@ pub fn read_keyboard(keys: Res<ButtonInput<KeyCode>>, mut input: Single<&mut Pig
     if keys.just_pressed(KeyCode::Space) {
         input.jump = true;
     }
+    input.glide = keys.pressed(KeyCode::Space);
 }
 
 fn update_grounded(mut pigeons: Query<(&ShapeHits, &mut Grounded)>) {
@@ -107,10 +124,44 @@ fn walk(time: Res<Time>, mut pigeons: Query<(&PigeonInput, &Grounded, &mut Linea
     }
 }
 
-fn jump(mut pigeons: Query<(&mut PigeonInput, &Grounded, &mut LinearVelocity)>) {
-    for (mut input, grounded, mut velocity) in &mut pigeons {
-        if std::mem::take(&mut input.jump) && grounded.0 {
+/// One button: a jump on the ground, a flap in the air.
+fn jump_or_flap(
+    mut pigeons: Query<(
+        &mut PigeonInput,
+        &Grounded,
+        &mut Stamina,
+        &mut LinearVelocity,
+    )>,
+) {
+    for (mut input, grounded, mut stamina, mut velocity) in &mut pigeons {
+        if !std::mem::take(&mut input.jump) {
+            continue;
+        }
+        if grounded.0 {
             velocity.y = JUMP_SPEED;
+        } else if stamina.try_spend(FLAP_COST) {
+            velocity.y = FLAP_SPEED;
+        }
+    }
+}
+
+fn glide(
+    time: Res<Time>,
+    mut pigeons: Query<(&PigeonInput, &Grounded, &mut Stamina, &mut LinearVelocity)>,
+) {
+    for (input, grounded, mut stamina, mut velocity) in &mut pigeons {
+        if !input.glide || grounded.0 || stamina.is_empty() || velocity.y >= -GLIDE_FALL_SPEED {
+            continue;
+        }
+        velocity.y = -GLIDE_FALL_SPEED;
+        stamina.drain(GLIDE_DRAIN * time.delta_secs());
+    }
+}
+
+fn refill_on_ground(time: Res<Time>, mut pigeons: Query<(&Grounded, &mut Stamina)>) {
+    for (grounded, mut stamina) in &mut pigeons {
+        if grounded.0 {
+            stamina.refill(GROUND_REFILL * time.delta_secs());
         }
     }
 }
