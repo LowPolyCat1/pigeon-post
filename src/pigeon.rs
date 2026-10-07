@@ -40,13 +40,13 @@ impl Plugin for PigeonPlugin {
     }
 }
 
-#[derive(Component)]
+#[derive(Component, Clone, Copy)]
 #[require(PigeonInput, Grounded, Stamina)]
 pub struct Pigeon;
 
 /// The input for the next fixed step. The simulation reads this, never the keyboard,
 /// so a test can drive a pigeon.
-#[derive(Component, Default, Debug)]
+#[derive(Component, Default, Debug, Clone, Copy, PartialEq)]
 pub struct PigeonInput {
     /// `x` is right, `y` is forward. The length is at most 1.
     pub movement: Vec2,
@@ -56,6 +56,21 @@ pub struct PigeonInput {
     /// Held down. Slows a fall while the pigeon is in the air.
     pub glide: bool,
 }
+
+impl PigeonInput {
+    /// Takes the newest movement and glide. A jump stays set until a fixed step consumes it,
+    /// because several frames can arrive between two fixed steps.
+    pub fn merge(&mut self, frame: PigeonInput) {
+        self.movement = frame.movement;
+        self.glide = frame.glide;
+        self.jump |= frame.jump;
+    }
+}
+
+/// One frame of local input. The authority writes it into the pigeon of the sender,
+/// so a host, a client and a single player use one input path.
+#[derive(Message, Debug, Clone, Copy, PartialEq)]
+pub struct InputMessage(pub PigeonInput);
 
 #[derive(Component, Default, Debug)]
 pub struct Grounded(pub bool);
@@ -82,7 +97,7 @@ pub fn pigeon_body() -> impl Bundle {
     )
 }
 
-pub fn read_keyboard(keys: Res<ButtonInput<KeyCode>>, mut input: Single<&mut PigeonInput>) {
+pub fn read_keyboard(keys: Res<ButtonInput<KeyCode>>, mut messages: MessageWriter<InputMessage>) {
     let mut movement = Vec2::ZERO;
     if keys.pressed(KeyCode::KeyW) {
         movement.y += 1.0;
@@ -96,11 +111,11 @@ pub fn read_keyboard(keys: Res<ButtonInput<KeyCode>>, mut input: Single<&mut Pig
     if keys.pressed(KeyCode::KeyA) {
         movement.x -= 1.0;
     }
-    input.movement = movement.normalize_or_zero();
-    if keys.just_pressed(KeyCode::Space) {
-        input.jump = true;
-    }
-    input.glide = keys.pressed(KeyCode::Space);
+    messages.write(InputMessage(PigeonInput {
+        movement: movement.normalize_or_zero(),
+        jump: keys.just_pressed(KeyCode::Space),
+        glide: keys.pressed(KeyCode::Space),
+    }));
 }
 
 fn update_grounded(mut pigeons: Query<(&ShapeHits, &mut Grounded)>) {
@@ -185,6 +200,33 @@ mod tests {
     fn steer_limits_change() {
         let result = steer(Vec2::ZERO, Vec2::new(10.0, 0.0), 2.0);
         assert_eq!(result, Vec2::new(2.0, 0.0));
+    }
+
+    #[test]
+    fn merge_takes_newest_movement_and_glide() {
+        let mut input = PigeonInput {
+            movement: Vec2::X,
+            jump: false,
+            glide: true,
+        };
+        input.merge(PigeonInput {
+            movement: Vec2::Y,
+            jump: false,
+            glide: false,
+        });
+        assert_eq!(input.movement, Vec2::Y);
+        assert!(!input.glide);
+    }
+
+    #[test]
+    fn merge_keeps_jump_until_consumed() {
+        let mut input = PigeonInput::default();
+        input.merge(PigeonInput {
+            jump: true,
+            ..default()
+        });
+        input.merge(PigeonInput::default());
+        assert!(input.jump);
     }
 
     #[test]

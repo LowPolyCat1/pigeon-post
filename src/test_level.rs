@@ -4,7 +4,8 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 
 use crate::cloud_sea::SEA_LEVEL;
-use crate::pigeon::{CAPSULE_LENGTH, Pigeon, RADIUS, pigeon_body};
+use crate::net::LocalPigeon;
+use crate::pigeon::{CAPSULE_LENGTH, Pigeon, RADIUS};
 
 const CAMERA_OFFSET: Vec3 = Vec3::new(0.0, 4.0, 8.0);
 const ISLAND_SIZE: Vec3 = Vec3::new(20.0, 1.0, 20.0);
@@ -13,10 +14,12 @@ pub struct TestLevelPlugin;
 
 impl Plugin for TestLevelPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_level).add_systems(
-            PostUpdate,
-            follow_pigeon.before(TransformSystems::Propagate),
-        );
+        app.add_systems(Startup, spawn_level)
+            .add_observer(add_pigeon_mesh)
+            .add_systems(
+                PostUpdate,
+                follow_pigeon.before(TransformSystems::Propagate),
+            );
     }
 }
 
@@ -46,13 +49,6 @@ fn spawn_level(
         ));
     }
 
-    commands.spawn((
-        pigeon_body(),
-        Mesh3d(meshes.add(Capsule3d::new(RADIUS, CAPSULE_LENGTH))),
-        MeshMaterial3d(materials.add(Color::srgb(0.55, 0.57, 0.62))),
-        Transform::from_xyz(0.0, 2.0, 0.0),
-    ));
-
     // Only a picture: CloudSeaPlugin computes the depth without a collider.
     commands.spawn((
         Mesh3d(meshes.add(Plane3d::default().mesh().size(400.0, 400.0))),
@@ -78,10 +74,23 @@ fn spawn_level(
     ));
 }
 
+/// The authority spawns the pigeons, and a client receives them. Each instance adds the mesh.
+fn add_pigeon_mesh(
+    add: On<Add, Pigeon>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    commands.entity(add.entity).insert((
+        Mesh3d(meshes.add(Capsule3d::new(RADIUS, CAPSULE_LENGTH))),
+        MeshMaterial3d(materials.add(Color::srgb(0.55, 0.57, 0.62))),
+    ));
+}
+
 /// The offset is constant, so the camera keeps the rotation it spawned with.
 fn follow_pigeon(
-    pigeon: Single<&Transform, With<Pigeon>>,
-    mut camera: Single<&mut Transform, (With<Camera3d>, Without<Pigeon>)>,
+    pigeon: Single<&Transform, With<LocalPigeon>>,
+    mut camera: Single<&mut Transform, (With<Camera3d>, Without<LocalPigeon>)>,
 ) {
     camera.translation = pigeon.translation + CAMERA_OFFSET;
 }

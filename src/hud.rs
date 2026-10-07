@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use crate::pigeon::Pigeon;
+use crate::net::LocalPigeon;
 use crate::stamina::Stamina;
 
 pub struct HudPlugin;
@@ -42,7 +42,7 @@ fn spawn_stamina_bar(mut commands: Commands) {
 }
 
 fn update_stamina_bar(
-    stamina: Single<&Stamina, With<Pigeon>>,
+    stamina: Single<&Stamina, With<LocalPigeon>>,
     mut fill: Single<&mut Node, With<StaminaFill>>,
 ) {
     fill.width = Val::Percent(stamina.value() * 100.0);
