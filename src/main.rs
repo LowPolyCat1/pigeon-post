@@ -10,15 +10,15 @@ use pigeon_post::net::{NetMode, NetPlugin, parse_args, start_network, unix_time}
 use pigeon_post::pigeon::{PigeonPlugin, read_keyboard};
 use pigeon_post::props::PropsPlugin;
 use pigeon_post::sea_render::CloudSeaRenderPlugin;
-use pigeon_post::ship::ShipPlugin;
+use pigeon_post::ship::{ShipClass, ShipOverride, ShipPlugin, take_ship_arg};
 use pigeon_post::sky::SkyPlugin;
 use pigeon_post::start_island::StartIslandPlugin;
 use pigeon_post::test_level::TestLevelPlugin;
 use pigeon_post::wind::{WindLinesPlugin, WindPlugin};
 
 fn main() -> AppExit {
-    let mode = match net_mode() {
-        Ok(mode) => mode,
+    let (mode, ship) = match read_args() {
+        Ok(args) => args,
         Err(error) => {
             eprintln!("{error}");
             return AppExit::error();
@@ -26,6 +26,7 @@ fn main() -> AppExit {
     };
     App::new()
         .insert_resource(mode)
+        .insert_resource(ShipOverride(ship))
         .add_plugins((
             DefaultPlugins,
             PhysicsPlugins::default(),
@@ -49,8 +50,9 @@ fn main() -> AppExit {
         .run()
 }
 
-fn net_mode() -> Result<NetMode, String> {
+fn read_args() -> Result<(NetMode, Option<ShipClass>), String> {
     // Milliseconds since 1970 differ between two clients that start on one LAN.
     let client_id = unix_time()?.as_millis() as u64;
-    parse_args(std::env::args().skip(1), client_id)
+    let (args, ship) = take_ship_arg(std::env::args().skip(1))?;
+    Ok((parse_args(args, client_id)?, ship))
 }
