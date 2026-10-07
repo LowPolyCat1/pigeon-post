@@ -34,10 +34,22 @@ Before an upgrade, make sure that each crate supports the new Bevy version. If o
 
 If `bevy_replicon_renet` moves to `steamworks` 0.13, examine `bevy_steamworks` again.
 
+## The toolchain
+
+`rust-toolchain.toml` selects the nightly toolchain. Rustup installs rustfmt, Clippy, and the Cranelift code generator with it.
+
 ## Fast development builds
 
-To run the game during development, use `cargo run --features dev`.
+A development build uses the Cranelift code generator. Cranelift generates code faster than LLVM. `.cargo/config.toml` sets it.
 
-The `dev` feature links Bevy as a shared library. Then a rebuild compiles and links only the game code.
+The `poly1305` crate uses AVX2 instructions. Cranelift cannot compile them, so `poly1305` uses LLVM.
+
+Do not use sccache. On Windows, sccache cannot start rustc for the large Bevy crates. The command line is too long.
+
+The `dev` feature links Bevy as a shared library. On Windows, Cranelift cannot link this library. To use the `dev` feature, set `codegen-backend = "llvm"` for the dev profile.
+
+## Release builds
+
+A release build uses fat LTO and one code generation unit. The build is slow, and the game is fast.
 
 Do not use the `dev` feature for a release build. A release build includes Bevy in the program file.
