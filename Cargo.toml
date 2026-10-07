@@ -18,3 +18,9 @@ steamworks = "=0.12.2"
 # Builds Bevy as a shared library, so a rebuild relinks only the game code.
 # Use it for development only: `cargo run --features dev`. A release build must not use it.
 dev = ["bevy/dynamic_linking"]
+
+# The voice spike uses these crates only in `examples/voice_loopback.rs`.
+# cpal 0.17.3 is the version that Bevy audio already uses, so the build holds one cpal.
+[dev-dependencies]
+cpal = "=0.17.3"
+opus = "=0.4.0"
