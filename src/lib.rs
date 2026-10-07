@@ -5,6 +5,7 @@ pub mod cloud_sea;
 pub mod controls;
 pub mod first_person;
 pub mod grab;
+pub mod helm;
 pub mod hud;
 pub mod island_mesh;
 pub mod net;

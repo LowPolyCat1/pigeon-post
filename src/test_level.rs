@@ -8,6 +8,7 @@ use bevy::prelude::*;
 use crate::controls::{
     CRANK_GRIP_LENGTH, Control, HANDLE_THICKNESS, SPOKE_OVERHANG, SPOKE_THICKNESS,
 };
+use crate::helm::RudderAngle;
 use crate::pigeon::{CAPSULE_LENGTH, Pigeon, RADIUS};
 use crate::props::{CRATE_SIZE, Crate};
 use crate::ship::{Mount, RAIL_HEIGHT, ShipClass};
@@ -17,6 +18,7 @@ pub struct TestLevelPlugin;
 impl Plugin for TestLevelPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_camera)
+            .add_systems(Update, turn_rudder_blades)
             .add_observer(add_pigeon_mesh)
             .add_observer(add_crate_mesh)
             .add_observer(add_ship_mesh)
@@ -260,6 +262,13 @@ fn add_ship_mesh(
         }
     }
 
+    // The rudder hangs aft of the propeller, below the deck. The blade reaches aft of its hinge, so
+    // a positive angle swings the trailing edge to starboard.
+    let blade = (
+        meshes.add(Cuboid::new(0.12, size.y * 0.8, 0.9)),
+        rail.clone(),
+    );
+
     commands
         .entity(add.entity)
         .insert((
@@ -270,7 +279,32 @@ fn add_ship_mesh(
             for (mesh, material, transform) in parts {
                 ship.spawn((Mesh3d(mesh), MeshMaterial3d(material), transform));
             }
+            ship.spawn((
+                RudderBlade,
+                Transform::from_xyz(0.0, -0.1 * size.y, half.z + 0.25),
+                Visibility::default(),
+            ))
+            .with_child((
+                Mesh3d(blade.0),
+                MeshMaterial3d(blade.1),
+                Transform::from_xyz(0.0, 0.0, 0.45),
+            ));
         });
+}
+
+/// The hinge of the rudder blade, a child of the ship.
+#[derive(Component, Debug)]
+struct RudderBlade;
+
+fn turn_rudder_blades(
+    ships: Query<&RudderAngle>,
+    mut blades: Query<(&ChildOf, &mut Transform), With<RudderBlade>>,
+) {
+    for (child_of, mut transform) in &mut blades {
+        if let Ok(rudder) = ships.get(child_of.parent()) {
+            transform.rotation = Quat::from_rotation_y(rudder.0);
+        }
+    }
 }
 
 /// A placeholder shape for the part at a mount, until the part has a model. The offset
@@ -280,12 +314,8 @@ fn mount_marker(mount: Mount) -> Option<(Mesh, Color, Vec3)> {
     let iron = Color::srgb(0.2, 0.2, 0.22);
     let facing_z = Quat::from_rotation_x(FRAC_PI_2);
     let marker = match mount {
-        Mount::Mast | Mount::CrowsNest => return None,
-        Mount::Helm => (
-            Mesh::from(Cylinder::new(0.5, 0.08)).rotated_by(facing_z),
-            Color::srgb(0.55, 0.35, 0.15),
-            Vec3::Y * 0.9,
-        ),
+        // The helm is a control with its own mesh.
+        Mount::Mast | Mount::CrowsNest | Mount::Helm => return None,
         Mount::Furnace => (Cuboid::new(1.0, 1.2, 1.0).into(), iron, Vec3::Y * 0.6),
         Mount::CoalBunker => (
             Cuboid::new(0.9, 0.7, 0.9).into(),
