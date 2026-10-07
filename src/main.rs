@@ -11,6 +11,7 @@ use pigeon_post::hud::HudPlugin;
 use pigeon_post::net::{NetMode, NetPlugin, parse_args, start_network, unix_time};
 use pigeon_post::pigeon::{PigeonPlugin, read_keyboard};
 use pigeon_post::props::PropsPlugin;
+use pigeon_post::sails::{SailMeshPlugin, SailsPlugin};
 use pigeon_post::sea_render::CloudSeaRenderPlugin;
 use pigeon_post::ship::{ShipClass, ShipOverride, ShipPlugin, take_ship_arg};
 use pigeon_post::sky::SkyPlugin;
@@ -52,6 +53,8 @@ fn main() -> AppExit {
             GrabPlugin,
             ControlsPlugin,
             HelmPlugin,
+            SailsPlugin,
+            SailMeshPlugin,
         ))
         .add_systems(Startup, start_network)
         .add_systems(Update, read_keyboard)
