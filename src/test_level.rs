@@ -5,6 +5,9 @@ use std::f32::consts::FRAC_PI_2;
 
 use bevy::prelude::*;
 
+use crate::controls::{
+    CRANK_GRIP_LENGTH, Control, HANDLE_THICKNESS, SPOKE_OVERHANG, SPOKE_THICKNESS,
+};
 use crate::pigeon::{CAPSULE_LENGTH, Pigeon, RADIUS};
 use crate::props::{CRATE_SIZE, Crate};
 use crate::ship::{Mount, RAIL_HEIGHT, ShipClass};
@@ -16,7 +19,8 @@ impl Plugin for TestLevelPlugin {
         app.add_systems(Startup, spawn_camera)
             .add_observer(add_pigeon_mesh)
             .add_observer(add_crate_mesh)
-            .add_observer(add_ship_mesh);
+            .add_observer(add_ship_mesh)
+            .add_observer(add_control_mesh);
     }
 }
 
@@ -47,6 +51,89 @@ fn add_crate_mesh(
         Mesh3d(meshes.add(Cuboid::from_length(CRATE_SIZE))),
         MeshMaterial3d(materials.add(Color::srgb(0.7, 0.5, 0.25))),
     ));
+}
+
+/// The shapes of a control match its collider in [`crate::controls`]. The hinge axis is the
+/// local Z axis.
+fn add_control_mesh(
+    add: On<Add, Control>,
+    controls: Query<&Control>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let Ok(&control) = controls.get(add.entity) else {
+        return;
+    };
+    let wood = materials.add(Color::srgb(0.55, 0.35, 0.15));
+    let brass = materials.add(Color::srgb(0.85, 0.65, 0.2));
+    let mut parts: Vec<(Mesh, Handle<StandardMaterial>, Transform)> = Vec::new();
+    match control {
+        Control::Lever { length } => {
+            parts.push((
+                Cuboid::new(HANDLE_THICKNESS, length, HANDLE_THICKNESS).into(),
+                brass.clone(),
+                Transform::from_translation(Vec3::Y * length / 2.0),
+            ));
+            parts.push((
+                Sphere::new(HANDLE_THICKNESS).into(),
+                wood.clone(),
+                Transform::from_translation(Vec3::Y * length),
+            ));
+        }
+        Control::Wheel { radius } => {
+            parts.push((
+                Mesh::from(Torus::new(radius - 0.04, radius + 0.04))
+                    .rotated_by(Quat::from_rotation_x(FRAC_PI_2)),
+                wood.clone(),
+                Transform::default(),
+            ));
+            for index in 0..4 {
+                parts.push((
+                    Cuboid::new(
+                        2.0 * (radius + SPOKE_OVERHANG),
+                        SPOKE_THICKNESS * 0.6,
+                        SPOKE_THICKNESS * 0.6,
+                    )
+                    .into(),
+                    wood.clone(),
+                    Transform::from_rotation(Quat::from_rotation_z(
+                        index as f32 * std::f32::consts::FRAC_PI_4,
+                    )),
+                ));
+            }
+            parts.push((
+                Mesh::from(Cylinder::new(0.1, 0.15)).rotated_by(Quat::from_rotation_x(FRAC_PI_2)),
+                brass.clone(),
+                Transform::default(),
+            ));
+        }
+        Control::Crank { radius } => {
+            parts.push((
+                Cuboid::new(HANDLE_THICKNESS, radius, HANDLE_THICKNESS).into(),
+                brass.clone(),
+                Transform::from_translation(Vec3::Y * radius / 2.0),
+            ));
+            parts.push((
+                Mesh::from(Cylinder::new(SPOKE_THICKNESS / 2.0, CRANK_GRIP_LENGTH))
+                    .rotated_by(Quat::from_rotation_x(FRAC_PI_2)),
+                wood.clone(),
+                Transform::from_xyz(0.0, radius, CRANK_GRIP_LENGTH / 2.0),
+            ));
+        }
+    }
+    commands
+        .entity(add.entity)
+        .insert(Visibility::default())
+        .with_children(|control| {
+            for (mesh, material, transform) in parts {
+                control.spawn((
+                    Mesh3d(meshes.add(mesh)),
+                    MeshMaterial3d(material),
+                    transform,
+                ));
+            }
+        });
 }
 
 /// The hull and the rails of [`crate::ship::ship_collider`], the rigging of a skyship, and a

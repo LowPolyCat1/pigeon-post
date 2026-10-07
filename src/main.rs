@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use bevy_replicon_renet::RepliconRenetPlugins;
 use pigeon_post::cloud_sea::CloudSeaPlugin;
+use pigeon_post::controls::ControlsPlugin;
 use pigeon_post::first_person::FirstPersonPlugin;
 use pigeon_post::grab::GrabPlugin;
 use pigeon_post::hud::HudPlugin;
@@ -44,7 +45,7 @@ fn main() -> AppExit {
             HudPlugin,
             FirstPersonPlugin,
         ))
-        .add_plugins((WindPlugin, WindLinesPlugin, GrabPlugin))
+        .add_plugins((WindPlugin, WindLinesPlugin, GrabPlugin, ControlsPlugin))
         .add_systems(Startup, start_network)
         .add_systems(Update, read_keyboard)
         .run()
