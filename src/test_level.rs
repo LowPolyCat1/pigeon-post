@@ -3,7 +3,6 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
-use crate::cloud_sea::SEA_LEVEL;
 use crate::net::LocalPigeon;
 use crate::pigeon::{CAPSULE_LENGTH, Pigeon, RADIUS};
 use crate::props::{CRATE_SIZE, Crate};
@@ -50,17 +49,6 @@ fn spawn_level(
             Transform::from_xyz(-4.0 + index as f32 * 2.0, height / 2.0, -5.0),
         ));
     }
-
-    // Only a picture: CloudSeaPlugin computes the depth without a collider.
-    commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(400.0, 400.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgba(0.95, 0.95, 1.0, 0.85),
-            alpha_mode: AlphaMode::Blend,
-            ..default()
-        })),
-        Transform::from_xyz(0.0, SEA_LEVEL, 0.0),
-    ));
 
     commands.spawn((
         DirectionalLight {

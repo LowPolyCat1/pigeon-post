@@ -1,12 +1,14 @@
 //! The cloud sea below the islands. A pigeon floats in it and refills its stamina.
 //!
-//! The surface is flat for now. The wave height field of the cloud sea replaces it later.
+//! The surface moves with the Gerstner waves of [`crate::waves`]. Only the authority runs these
+//! systems, so the gameplay uses one surface on every instance.
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
 use crate::pigeon::Pigeon;
 use crate::stamina::Stamina;
+use crate::waves::surface_height;
 
 /// Low enough to fall into from an island, close enough to flap back up with a full bar.
 pub const SEA_LEVEL: f32 = -2.5;
@@ -25,9 +27,9 @@ impl Plugin for CloudSeaPlugin {
     }
 }
 
-/// Positive means submerged. The value is the depth below the surface, in meters.
-pub fn cloud_sea_depth(position: Vec3) -> f32 {
-    SEA_LEVEL - position.y
+/// Positive means submerged. The value is the depth below the surface at `time`, in meters.
+pub fn cloud_sea_depth(position: Vec3, time: f32) -> f32 {
+    SEA_LEVEL + surface_height(position.xz(), time) - position.y
 }
 
 /// Upward acceleration at `depth`. Zero above the surface.
@@ -38,7 +40,7 @@ fn buoyancy(depth: f32) -> f32 {
 fn float(time: Res<Time>, mut pigeons: Query<(&Position, &mut LinearVelocity), With<Pigeon>>) {
     let delta = time.delta_secs();
     for (position, mut velocity) in &mut pigeons {
-        let depth = cloud_sea_depth(position.0);
+        let depth = cloud_sea_depth(position.0, time.elapsed_secs());
         if depth <= 0.0 {
             continue;
         }
@@ -52,7 +54,7 @@ fn refill_while_swimming(
     mut pigeons: Query<(&Position, &mut Stamina), With<Pigeon>>,
 ) {
     for (position, mut stamina) in &mut pigeons {
-        if cloud_sea_depth(position.0) > 0.0 {
+        if cloud_sea_depth(position.0, time.elapsed_secs()) > 0.0 {
             stamina.refill(SWIM_REFILL * time.delta_secs());
         }
     }
@@ -63,13 +65,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn depth_is_positive_below_surface() {
-        assert_eq!(cloud_sea_depth(Vec3::new(3.0, SEA_LEVEL - 1.0, -2.0)), 1.0);
+    fn depth_follows_the_waves() {
+        let point = Vec3::new(3.0, SEA_LEVEL - 1.0, -2.0);
+        let surface = surface_height(point.xz(), 1.5);
+        assert!((cloud_sea_depth(point, 1.5) - (1.0 + surface)).abs() < 1e-5);
     }
 
     #[test]
-    fn depth_is_negative_above_surface() {
-        assert!(cloud_sea_depth(Vec3::new(0.0, SEA_LEVEL + 2.0, 0.0)) < 0.0);
+    fn depth_is_negative_above_the_highest_crest() {
+        assert!(cloud_sea_depth(Vec3::new(0.0, SEA_LEVEL + 2.0, 0.0), 0.0) < 0.0);
     }
 
     #[test]

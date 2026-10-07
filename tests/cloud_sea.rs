@@ -38,11 +38,12 @@ fn run_seconds(app: &mut App, seconds: f32) {
 }
 
 fn depth(app: &App, pigeon: Entity) -> f32 {
+    let time = app.world().resource::<Time<Fixed>>().elapsed_secs();
     let position = app
         .world()
         .get::<Position>(pigeon)
         .expect("pigeon has a position");
-    cloud_sea_depth(position.0)
+    cloud_sea_depth(position.0, time)
 }
 
 #[test]

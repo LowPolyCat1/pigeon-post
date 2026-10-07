@@ -7,6 +7,7 @@ use pigeon_post::hud::HudPlugin;
 use pigeon_post::net::{NetMode, NetPlugin, parse_args, start_network, unix_time};
 use pigeon_post::pigeon::{PigeonPlugin, read_keyboard};
 use pigeon_post::props::PropsPlugin;
+use pigeon_post::sea_render::CloudSeaRenderPlugin;
 use pigeon_post::test_level::TestLevelPlugin;
 
 fn main() -> AppExit {
@@ -26,6 +27,7 @@ fn main() -> AppExit {
             RepliconRenetPlugins,
             PigeonPlugin,
             CloudSeaPlugin,
+            CloudSeaRenderPlugin,
             NetPlugin,
             PropsPlugin,
             TestLevelPlugin,
