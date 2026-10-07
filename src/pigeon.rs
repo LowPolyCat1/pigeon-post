@@ -40,13 +40,13 @@ impl Plugin for PigeonPlugin {
     }
 }
 
-#[derive(Component)]
-#[require(PigeonInput, Grounded, Stamina)]
+#[derive(Component, Clone, Copy)]
+#[require(PigeonInput, Grounded, GroundVelocity, Stamina)]
 pub struct Pigeon;
 
 /// The input for the next fixed step. The simulation reads this, never the keyboard,
 /// so a test can drive a pigeon.
-#[derive(Component, Default, Debug)]
+#[derive(Component, Default, Debug, Clone, Copy, PartialEq)]
 pub struct PigeonInput {
     /// `x` is right, `y` is forward. The length is at most 1.
     pub movement: Vec2,
@@ -57,8 +57,29 @@ pub struct PigeonInput {
     pub glide: bool,
 }
 
+impl PigeonInput {
+    /// Takes the newest movement and glide. A jump stays set until a fixed step consumes it,
+    /// because several frames can arrive between two fixed steps.
+    pub fn merge(&mut self, frame: PigeonInput) {
+        self.movement = frame.movement;
+        self.glide = frame.glide;
+        self.jump |= frame.jump;
+    }
+}
+
+/// One frame of local input. The authority writes it into the pigeon of the sender,
+/// so a host, a client and a single player use one input path.
+#[derive(Message, Debug, Clone, Copy, PartialEq)]
+pub struct InputMessage(pub PigeonInput);
+
 #[derive(Component, Default, Debug)]
 pub struct Grounded(pub bool);
+
+/// The velocity of the body under the pigeon, at the feet of the pigeon. A pigeon walks
+/// relative to it, so it stays on a moving deck. In the air the last value stays, so a jump
+/// from a moving deck lands on the deck again.
+#[derive(Component, Default, Debug, Clone, Copy, PartialEq)]
+pub struct GroundVelocity(pub Vec3);
 
 /// The physics components of a pigeon, without a mesh, so tests can spawn one headless.
 pub fn pigeon_body() -> impl Bundle {
@@ -82,7 +103,7 @@ pub fn pigeon_body() -> impl Bundle {
     )
 }
 
-pub fn read_keyboard(keys: Res<ButtonInput<KeyCode>>, mut input: Single<&mut PigeonInput>) {
+pub fn read_keyboard(keys: Res<ButtonInput<KeyCode>>, mut messages: MessageWriter<InputMessage>) {
     let mut movement = Vec2::ZERO;
     if keys.pressed(KeyCode::KeyW) {
         movement.y += 1.0;
@@ -96,28 +117,75 @@ pub fn read_keyboard(keys: Res<ButtonInput<KeyCode>>, mut input: Single<&mut Pig
     if keys.pressed(KeyCode::KeyA) {
         movement.x -= 1.0;
     }
-    input.movement = movement.normalize_or_zero();
-    if keys.just_pressed(KeyCode::Space) {
-        input.jump = true;
-    }
-    input.glide = keys.pressed(KeyCode::Space);
+    messages.write(InputMessage(PigeonInput {
+        movement: movement.normalize_or_zero(),
+        jump: keys.just_pressed(KeyCode::Space),
+        glide: keys.pressed(KeyCode::Space),
+    }));
 }
 
-fn update_grounded(mut pigeons: Query<(&ShapeHits, &mut Grounded)>) {
-    for (hits, mut grounded) in &mut pigeons {
-        grounded.0 = !hits.is_empty();
+/// The motion of a body that a pigeon can stand on. Another pigeon is not ground that moves.
+type CarrierQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static Position,
+        &'static Rotation,
+        &'static LinearVelocity,
+        &'static AngularVelocity,
+        &'static ComputedCenterOfMass,
+    ),
+    Without<Pigeon>,
+>;
+
+fn update_grounded(
+    mut pigeons: Query<(&ShapeHits, &Position, &mut Grounded, &mut GroundVelocity)>,
+    colliders: Query<&ColliderOf>,
+    carriers: CarrierQuery,
+) {
+    for (hits, position, mut grounded, mut ground_velocity) in &mut pigeons {
+        let Some(hit) = hits.iter().next() else {
+            grounded.0 = false;
+            continue;
+        };
+        grounded.0 = true;
+        let body = colliders
+            .get(hit.entity)
+            .map_or(hit.entity, |collider| collider.body);
+        ground_velocity.0 = carriers.get(body).map_or(
+            Vec3::ZERO,
+            |(body_position, rotation, linear, angular, center)| {
+                let center = body_position.0 + rotation.0 * center.0;
+                point_velocity(linear.0, angular.0, center, position.0)
+            },
+        );
     }
 }
 
-fn walk(time: Res<Time>, mut pigeons: Query<(&PigeonInput, &Grounded, &mut LinearVelocity)>) {
-    for (input, grounded, mut velocity) in &mut pigeons {
+/// The velocity of `point` on a rigid body that moves with `linear` and turns with `angular`
+/// around `center`.
+fn point_velocity(linear: Vec3, angular: Vec3, center: Vec3, point: Vec3) -> Vec3 {
+    linear + angular.cross(point - center)
+}
+
+fn walk(
+    time: Res<Time>,
+    mut pigeons: Query<(
+        &PigeonInput,
+        &Grounded,
+        &GroundVelocity,
+        &mut LinearVelocity,
+    )>,
+) {
+    for (input, grounded, ground_velocity, mut velocity) in &mut pigeons {
         let acceleration = if grounded.0 {
             GROUND_ACCELERATION
         } else {
             AIR_ACCELERATION
         };
         // Forward is -Z, the direction the camera looks.
-        let target = Vec2::new(input.movement.x, -input.movement.y) * WALK_SPEED;
+        let target =
+            Vec2::new(input.movement.x, -input.movement.y) * WALK_SPEED + ground_velocity.0.xz();
         let horizontal = steer(velocity.xz(), target, acceleration * time.delta_secs());
         velocity.x = horizontal.x;
         velocity.z = horizontal.y;
@@ -176,6 +244,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn point_velocity_of_moving_body() {
+        let velocity = point_velocity(Vec3::new(2.0, 0.0, 0.0), Vec3::ZERO, Vec3::ZERO, Vec3::ONE);
+        assert_eq!(velocity, Vec3::new(2.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn point_velocity_of_turning_body() {
+        // A turn around the vertical axis moves a point on +X toward -Z.
+        let velocity = point_velocity(Vec3::ZERO, Vec3::Y, Vec3::ZERO, Vec3::new(3.0, 0.0, 0.0));
+        assert!(
+            (velocity - Vec3::new(0.0, 0.0, -3.0)).length() < 1e-6,
+            "{velocity}"
+        );
+    }
+
+    #[test]
     fn steer_stops_at_target() {
         let result = steer(Vec2::ZERO, Vec2::new(1.0, 0.0), 5.0);
         assert_eq!(result, Vec2::new(1.0, 0.0));
@@ -185,6 +269,33 @@ mod tests {
     fn steer_limits_change() {
         let result = steer(Vec2::ZERO, Vec2::new(10.0, 0.0), 2.0);
         assert_eq!(result, Vec2::new(2.0, 0.0));
+    }
+
+    #[test]
+    fn merge_takes_newest_movement_and_glide() {
+        let mut input = PigeonInput {
+            movement: Vec2::X,
+            jump: false,
+            glide: true,
+        };
+        input.merge(PigeonInput {
+            movement: Vec2::Y,
+            jump: false,
+            glide: false,
+        });
+        assert_eq!(input.movement, Vec2::Y);
+        assert!(!input.glide);
+    }
+
+    #[test]
+    fn merge_keeps_jump_until_consumed() {
+        let mut input = PigeonInput::default();
+        input.merge(PigeonInput {
+            jump: true,
+            ..default()
+        });
+        input.merge(PigeonInput::default());
+        assert!(input.jump);
     }
 
     #[test]
