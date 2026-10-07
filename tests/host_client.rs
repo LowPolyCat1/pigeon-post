@@ -13,6 +13,7 @@ use bevy_replicon::shared::backend::connected_client::NetworkId;
 use bevy_replicon::test_app::{ServerTestAppExt, TestClientEntity};
 use pigeon_post::net::{DEFAULT_PORT, LocalPigeon, NetMode, NetPlugin, Owner};
 use pigeon_post::pigeon::{InputMessage, Pigeon, PigeonInput, PigeonPlugin, WALK_SPEED};
+use pigeon_post::props::{CRATE_SIZE, Crate, PropsPlugin, crate_body};
 
 const CLIENT_ID: u64 = 42;
 
@@ -29,6 +30,7 @@ fn app(mode: NetMode) -> App {
         RepliconPlugins.set(ServerPlugin::new(PostUpdate)),
         PigeonPlugin,
         NetPlugin,
+        PropsPlugin,
     ))
     .insert_resource(mode)
     .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(
@@ -160,4 +162,72 @@ fn disconnect_removes_client_pigeon() {
 
     assert_eq!(pigeon_count(&mut host), 1);
     pigeon_of(&mut host, Owner::Host);
+}
+
+fn crate_count(app: &mut App) -> usize {
+    app.world_mut()
+        .query_filtered::<(), With<Crate>>()
+        .iter(app.world())
+        .count()
+}
+
+#[test]
+fn client_receives_crates_without_physics() {
+    let (mut host, mut client) = host_and_client();
+
+    assert!(crate_count(&mut host) > 0);
+    assert_eq!(crate_count(&mut client), crate_count(&mut host));
+    let mut bodies = client
+        .world_mut()
+        .query_filtered::<(), (With<Crate>, With<RigidBody>)>();
+    assert_eq!(bodies.iter(client.world()).count(), 0);
+}
+
+#[test]
+fn client_pigeon_pushes_crate_and_client_sees_it() {
+    let (mut host, mut client) = host_and_client();
+    let pigeon = pigeon_of(&mut host, Owner::Client(CLIENT_ID));
+    let pigeon_x = host
+        .world()
+        .get::<Transform>(pigeon)
+        .expect("pigeon has a transform")
+        .translation
+        .x;
+    // In the walk path of the client pigeon, which walks toward -Z.
+    let pushed = host
+        .world_mut()
+        .spawn((
+            crate_body(),
+            Transform::from_xyz(pigeon_x, CRATE_SIZE / 2.0, -1.5),
+        ))
+        .id();
+    run_frames(&mut host, &mut client, 60);
+    let start = host
+        .world()
+        .get::<Transform>(pushed)
+        .expect("crate has a transform")
+        .translation;
+
+    for _ in 0..90 {
+        client.world_mut().write_message(InputMessage(PigeonInput {
+            movement: Vec2::Y,
+            ..default()
+        }));
+        run_frames(&mut host, &mut client, 1);
+    }
+
+    let end = host
+        .world()
+        .get::<Transform>(pushed)
+        .expect("crate has a transform")
+        .translation;
+    assert!(end.z < start.z - 1.0, "start {start}, end {end}");
+
+    let mut crates = client
+        .world_mut()
+        .query_filtered::<&Transform, With<Crate>>();
+    let seen = crates
+        .iter(client.world())
+        .any(|transform| transform.translation.distance(end) < 0.1);
+    assert!(seen, "the client has no crate near {end}");
 }

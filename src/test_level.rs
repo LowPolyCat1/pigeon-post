@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use crate::cloud_sea::SEA_LEVEL;
 use crate::net::LocalPigeon;
 use crate::pigeon::{CAPSULE_LENGTH, Pigeon, RADIUS};
+use crate::props::{CRATE_SIZE, Crate};
 
 const CAMERA_OFFSET: Vec3 = Vec3::new(0.0, 4.0, 8.0);
 const ISLAND_SIZE: Vec3 = Vec3::new(20.0, 1.0, 20.0);
@@ -16,6 +17,7 @@ impl Plugin for TestLevelPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_level)
             .add_observer(add_pigeon_mesh)
+            .add_observer(add_crate_mesh)
             .add_systems(
                 PostUpdate,
                 follow_pigeon.before(TransformSystems::Propagate),
@@ -84,6 +86,18 @@ fn add_pigeon_mesh(
     commands.entity(add.entity).insert((
         Mesh3d(meshes.add(Capsule3d::new(RADIUS, CAPSULE_LENGTH))),
         MeshMaterial3d(materials.add(Color::srgb(0.55, 0.57, 0.62))),
+    ));
+}
+
+fn add_crate_mesh(
+    add: On<Add, Crate>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    commands.entity(add.entity).insert((
+        Mesh3d(meshes.add(Cuboid::from_length(CRATE_SIZE))),
+        MeshMaterial3d(materials.add(Color::srgb(0.7, 0.5, 0.25))),
     ));
 }
 
