@@ -4,6 +4,7 @@
 pub mod cloud_sea;
 pub mod first_person;
 pub mod hud;
+pub mod island_mesh;
 pub mod net;
 pub mod pigeon;
 pub mod props;

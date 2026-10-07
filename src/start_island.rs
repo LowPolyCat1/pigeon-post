@@ -3,26 +3,20 @@
 //!
 //! Every instance builds the scene itself. Nothing here moves, so nothing replicates.
 
-use std::f32::consts::{FRAC_PI_4, PI};
+use std::f32::consts::FRAC_PI_4;
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
+use crate::island_mesh::IslandShape;
 use crate::sky::SUN_DIRECTION;
 
-/// The grass top of the main island is at y = 0. The spawn points of the pigeons and the
-/// crates stand on it.
+/// The outline of the main island stays inside this radius, and the turf lip overhangs it
+/// by 3.5 %. Both stay clear of the skyship at its spawn point.
 const MAIN_RADIUS: f32 = 10.0;
-const GRASS_DEPTH: f32 = 0.4;
-const SOIL_DEPTH: f32 = 1.1;
-/// The rock under an island is a cone this many times as deep as the island is wide.
-/// A deep point gives the floating, upside-down mountain shape of the Skylands.
-const ROCK_DEPTH_FACTOR: f32 = 1.1;
-/// Depth fractions of the rock layers. Each layer lies on one cone, so one cone collider
-/// fits all of them.
-const ROCK_LAYERS: [f32; 4] = [0.0, 0.25, 0.55, 1.0];
-/// Faceted, chunky shapes instead of smooth ones.
-const RESOLUTION: u32 = 14;
+/// The spawn points of the pigeons and the crates assume flat grass at y = 0 inside this
+/// radius.
+const MAIN_FLAT_RADIUS: f32 = 7.5;
 
 pub struct StartIslandPlugin;
 
@@ -38,9 +32,8 @@ impl Plugin for StartIslandPlugin {
 }
 
 struct Palette {
-    grass: Handle<StandardMaterial>,
-    soil: Handle<StandardMaterial>,
-    rock: [Handle<StandardMaterial>; 3],
+    /// White, so the vertex colors of an island mesh show unchanged.
+    terrain: Handle<StandardMaterial>,
     bark: Handle<StandardMaterial>,
     leaves: [Handle<StandardMaterial>; 2],
     stone: Handle<StandardMaterial>,
@@ -61,13 +54,7 @@ impl Palette {
             })
         };
         Self {
-            grass: matte(Color::srgb(0.42, 0.78, 0.30)),
-            soil: matte(Color::srgb(0.55, 0.38, 0.22)),
-            rock: [
-                matte(Color::srgb(0.62, 0.50, 0.40)),
-                matte(Color::srgb(0.50, 0.40, 0.34)),
-                matte(Color::srgb(0.38, 0.31, 0.30)),
-            ],
+            terrain: matte(Color::WHITE),
             bark: matte(Color::srgb(0.45, 0.30, 0.18)),
             leaves: [
                 matte(Color::srgb(0.25, 0.62, 0.25)),
@@ -90,11 +77,41 @@ struct Builder<'a, 'w, 's> {
     palette: Palette,
 }
 
+/// The shape of the main island. Its grass top is at y = 0 in the world.
+pub fn main_island_shape() -> IslandShape {
+    IslandShape {
+        flat_radius: MAIN_FLAT_RADIUS,
+        bump: 0.3,
+        ..IslandShape::new(1, MAIN_RADIUS)
+    }
+}
+
+/// One floating island. `top` is the center of the grass surface.
+struct Island {
+    top: Vec3,
+    shape: IslandShape,
+}
+
+impl Island {
+    fn new(seed: u32, top: Vec3, radius: f32) -> Self {
+        Self {
+            top,
+            shape: IslandShape::new(seed, radius),
+        }
+    }
+
+    /// The point on the grass above or below world `(x, z)`.
+    fn ground(&self, x: f32, z: f32) -> Vec3 {
+        let height = self.shape.top_height(x - self.top.x, z - self.top.z);
+        Vec3::new(x, self.top.y + height, z)
+    }
+}
+
 fn spawn_start_island(
     commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-) {
+) -> Result {
     let palette = Palette::new(&mut materials);
     let mut builder = Builder {
         commands,
@@ -102,27 +119,34 @@ fn spawn_start_island(
         palette,
     };
 
-    builder.islet(Vec3::ZERO, MAIN_RADIUS);
+    let main = Island {
+        top: Vec3::ZERO,
+        shape: main_island_shape(),
+    };
+    builder.island(&main)?;
     // A raised meadow on the far side. A pigeon can jump onto it.
-    builder.islet(Vec3::new(-6.0, 0.8, -7.5), 4.5);
+    let meadow = Island::new(2, Vec3::new(-6.0, 0.8, -7.5), 4.5);
+    builder.island(&meadow)?;
 
-    builder.post_office(Vec3::new(-3.0, 0.0, 6.0));
+    builder.post_office(main.ground(-3.0, 6.0));
     builder.pier();
-    builder.tree(Vec3::new(6.0, 0.0, -5.0), 1.0);
-    builder.tree(Vec3::new(-7.5, 0.8, -8.5), 1.3);
-    builder.tree(Vec3::new(-7.5, 0.0, 2.5), 0.8);
-    builder.tree(Vec3::new(4.0, 0.0, 7.0), 1.1);
-    builder.rock(Vec3::new(7.5, 0.0, 3.5), 0.7);
-    builder.rock(Vec3::new(-1.0, 0.0, -7.0), 0.9);
-    builder.rock(Vec3::new(2.2, 0.0, -8.5), 0.5);
+    builder.tree(main.ground(6.0, -5.0), 1.0);
+    builder.tree(meadow.ground(-7.5, -8.5), 1.3);
+    builder.tree(main.ground(-7.5, 2.5), 0.8);
+    builder.tree(main.ground(4.0, 7.0), 1.1);
+    builder.rock(main.ground(7.5, 3.5), 0.7);
+    builder.rock(main.ground(-1.0, -7.0), 0.9);
+    builder.rock(main.ground(2.2, -8.5), 0.5);
 
     // Islets in the sky. The near ones are in reach of a pigeon with a full stamina bar.
-    builder.islet(Vec3::new(-19.0, 3.0, 11.0), 3.5);
-    builder.tree(Vec3::new(-19.5, 3.0, 11.5), 0.9);
-    builder.islet(Vec3::new(6.0, 5.0, -21.0), 2.5);
-    builder.islet(Vec3::new(45.0, 2.0, -50.0), 9.0);
-    builder.tree(Vec3::new(43.0, 2.0, -48.0), 1.6);
-    builder.islet(Vec3::new(-55.0, 8.0, -30.0), 6.0);
+    let west = Island::new(3, Vec3::new(-19.0, 3.0, 11.0), 3.5);
+    builder.island(&west)?;
+    builder.tree(west.ground(-19.5, 11.5), 0.9);
+    builder.island(&Island::new(4, Vec3::new(6.0, 5.0, -21.0), 2.5))?;
+    let far = Island::new(5, Vec3::new(45.0, 2.0, -50.0), 9.0);
+    builder.island(&far)?;
+    builder.tree(far.ground(43.0, -48.0), 1.6);
+    builder.island(&Island::new(6, Vec3::new(-55.0, 8.0, -30.0), 6.0))?;
 
     builder.commands.spawn((
         DirectionalLight {
@@ -133,6 +157,7 @@ fn spawn_start_island(
         // The sun of the sky dome and the light of the cloud sea point the same way.
         Transform::from_translation(SUN_DIRECTION).looking_at(Vec3::ZERO, Vec3::Y),
     ));
+    Ok(())
 }
 
 impl Builder<'_, '_, '_> {
@@ -161,59 +186,16 @@ impl Builder<'_, '_, '_> {
             .spawn((Mesh3d(mesh), MeshMaterial3d(material), transform));
     }
 
-    /// One floating island: a grass cap on a soil band, and a rock cone in layers below.
-    /// `top` is the center of the grass surface.
-    fn islet(&mut self, top: Vec3, radius: f32) {
-        let band = GRASS_DEPTH + SOIL_DEPTH;
-        let band_center = top - Vec3::Y * band / 2.0;
-        self.commands.spawn((
-            RigidBody::Static,
-            Collider::cylinder(radius, band),
-            Transform::from_translation(band_center),
-        ));
-        // The grass overhangs the soil a little, like the lip of turf on a Skylands island.
-        self.decoration(
-            Cylinder::new(radius * 1.03, GRASS_DEPTH)
-                .mesh()
-                .resolution(RESOLUTION)
-                .into(),
-            self.palette.grass.clone(),
-            Transform::from_translation(top - Vec3::Y * GRASS_DEPTH / 2.0),
+    /// One island mesh with a triangle mesh collider of the same shape.
+    fn island(&mut self, island: &Island) -> Result<(), String> {
+        let collider = island.shape.collider()?;
+        self.solid(
+            collider,
+            island.shape.mesh(),
+            self.palette.terrain.clone(),
+            Transform::from_translation(island.top),
         );
-        self.decoration(
-            Cylinder::new(radius, SOIL_DEPTH)
-                .mesh()
-                .resolution(RESOLUTION)
-                .into(),
-            self.palette.soil.clone(),
-            Transform::from_translation(top - Vec3::Y * (GRASS_DEPTH + SOIL_DEPTH / 2.0)),
-        );
-
-        let depth = radius * ROCK_DEPTH_FACTOR;
-        let rock_top = top.y - band;
-        // Avian's cone points up. Turned over, its point hangs below the island.
-        self.commands.spawn((
-            RigidBody::Static,
-            Collider::cone(radius, depth),
-            Transform::from_xyz(top.x, rock_top - depth / 2.0, top.z)
-                .with_rotation(Quat::from_rotation_x(PI)),
-        ));
-        for (index, layer) in ROCK_LAYERS.windows(2).enumerate() {
-            let (upper, lower) = (layer[0], layer[1]);
-            let height = (lower - upper) * depth;
-            self.decoration(
-                ConicalFrustum {
-                    radius_top: radius * (1.0 - upper),
-                    radius_bottom: radius * (1.0 - lower),
-                    height,
-                }
-                .mesh()
-                .resolution(RESOLUTION)
-                .into(),
-                self.palette.rock[index].clone(),
-                Transform::from_xyz(top.x, rock_top - (upper * depth + height / 2.0), top.z),
-            );
-        }
+        Ok(())
     }
 
     /// A round, cartoon tree. `ground` is the foot of the trunk.
