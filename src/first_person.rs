@@ -10,7 +10,7 @@ use crate::net::LocalPigeon;
 use crate::pigeon::CAPSULE_LENGTH;
 
 /// Above the center of the capsule, near the top cap.
-const EYE_HEIGHT: f32 = CAPSULE_LENGTH / 2.0 + 0.15;
+pub const EYE_HEIGHT: f32 = CAPSULE_LENGTH / 2.0 + 0.15;
 /// Radians per pixel of mouse motion.
 const MOUSE_SENSITIVITY: f32 = 0.0025;
 /// A bit less than straight up or down, so the view never flips over.
@@ -41,6 +41,12 @@ pub fn view_to_world(input: Vec2, yaw: f32) -> Vec2 {
     let forward = Vec2::new(-yaw.sin(), yaw.cos());
     let right = Vec2::new(yaw.cos(), yaw.sin());
     right * input.x + forward * input.y
+}
+
+/// The rotation of a view with `look` as yaw and pitch. The host aims the wings with it,
+/// so it must match the camera.
+pub fn look_rotation(look: Vec2) -> Quat {
+    Quat::from_euler(EulerRot::YXZ, look.x, look.y, 0.0)
 }
 
 /// Applies `delta` mouse pixels to `angles`.
@@ -95,7 +101,7 @@ fn place_camera(
     mut camera: Single<&mut Transform, (With<Camera3d>, Without<LocalPigeon>)>,
 ) {
     camera.translation = pigeon.translation + Vec3::Y * EYE_HEIGHT;
-    camera.rotation = Quat::from_euler(EulerRot::YXZ, angles.yaw, angles.pitch, 0.0);
+    camera.rotation = look_rotation(Vec2::new(angles.yaw, angles.pitch));
 }
 
 /// The camera is inside the own pigeon, so its mesh would cover the view.

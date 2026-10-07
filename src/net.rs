@@ -288,16 +288,28 @@ fn serialize_input(
     bytes: &mut Vec<u8>,
 ) -> Result<()> {
     let input = message.0;
-    postcard_utils::to_extend_mut(&(input.movement, input.jump, input.glide), bytes)?;
+    postcard_utils::to_extend_mut(
+        &(
+            input.movement,
+            input.jump,
+            input.glide,
+            input.look,
+            input.grab,
+        ),
+        bytes,
+    )?;
     Ok(())
 }
 
 fn deserialize_input(_: &mut ServerReceiveCtx, bytes: &mut Bytes) -> Result<InputMessage> {
-    let (movement, jump, glide): (Vec2, bool, bool) = postcard_utils::from_buf(bytes)?;
+    let (movement, jump, glide, look, grab): (Vec2, bool, bool, Vec2, [bool; 2]) =
+        postcard_utils::from_buf(bytes)?;
     Ok(InputMessage(PigeonInput {
         movement,
         jump,
         glide,
+        look,
+        grab,
     }))
 }
 

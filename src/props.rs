@@ -5,9 +5,11 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 
+use crate::grab::Grabbable;
 use crate::net::NetMode;
 
 pub const CRATE_SIZE: f32 = 0.6;
+const CRATE_DENSITY: f32 = 15.0;
 /// Left of the row where the pigeons spawn, so a new pigeon does not land on a crate.
 const CRATE_POSITIONS: [Vec3; 3] = [
     Vec3::new(-3.0, CRATE_SIZE / 2.0, -2.0),
@@ -48,6 +50,9 @@ pub fn crate_body() -> impl Bundle {
         Replicated,
         RigidBody::Dynamic,
         Collider::cuboid(CRATE_SIZE, CRATE_SIZE, CRATE_SIZE),
+        // 3.2 kg: one wing barely lifts a crate, two wings carry it.
+        ColliderDensity(CRATE_DENSITY),
+        Grabbable,
         TransformInterpolation,
     )
 }
