@@ -2,5 +2,19 @@
 name = "pigeon-post"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.95"
 
+# Bevy breaks its API every release and plugins lag behind it.
+# Every version is exact; docs/stack.md gives the upgrade rule.
 [dependencies]
+bevy = "=0.19.1"
+avian3d = "=0.7.0"
+bevy_replicon = "=0.44.2"
+bevy_replicon_renet = { version = "=0.20.0", features = ["renet_steam"] }
+# renet_steam requires steamworks 0.12; bevy_steamworks requires 0.13, so it is not used.
+steamworks = "=0.12.2"
+
+[features]
+# Builds Bevy as a shared library, so a rebuild relinks only the game code.
+# Use it for development only: `cargo run --features dev`. A release build must not use it.
+dev = ["bevy/dynamic_linking"]
