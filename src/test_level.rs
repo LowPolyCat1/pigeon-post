@@ -312,31 +312,15 @@ fn turn_rudder_blades(
 fn mount_marker(mount: Mount) -> Option<(Mesh, Color, Vec3)> {
     let brass = Color::srgb(0.85, 0.65, 0.2);
     let iron = Color::srgb(0.2, 0.2, 0.22);
-    let facing_z = Quat::from_rotation_x(FRAC_PI_2);
     let marker = match mount {
         // The helm is a control with its own mesh.
         Mount::Mast | Mount::CrowsNest | Mount::Helm => return None,
-        Mount::Furnace => (Cuboid::new(1.0, 1.2, 1.0).into(), iron, Vec3::Y * 0.6),
-        Mount::CoalBunker => (
-            Cuboid::new(0.9, 0.7, 0.9).into(),
-            Color::srgb(0.1, 0.1, 0.1),
-            Vec3::Y * 0.35,
-        ),
-        Mount::ThrottleLever => (
-            Cuboid::new(0.1, 0.8, 0.1).into(),
-            Color::srgb(0.95, 0.8, 0.1),
-            Vec3::Y * 0.4,
-        ),
-        Mount::IgnitionLever => (
-            Cuboid::new(0.1, 0.8, 0.1).into(),
-            Color::srgb(0.9, 0.1, 0.1),
-            Vec3::Y * 0.4,
-        ),
-        Mount::Propeller => (
-            Mesh::from(Cylinder::new(0.6, 0.1)).rotated_by(facing_z),
-            iron,
-            Vec3::Z * 0.1,
-        ),
+        // The engine parts have their own meshes in `engine_render`.
+        Mount::Furnace
+        | Mount::CoalBunker
+        | Mount::ThrottleLever
+        | Mount::IgnitionLever
+        | Mount::Propeller => return None,
         Mount::AnchorWinch => (
             Mesh::from(Cylinder::new(0.3, 1.0)).rotated_by(Quat::from_rotation_z(FRAC_PI_2)),
             iron,
