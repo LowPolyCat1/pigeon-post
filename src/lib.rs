@@ -3,6 +3,7 @@
 
 pub mod cloud_sea;
 pub mod first_person;
+pub mod grab;
 pub mod hud;
 pub mod island_mesh;
 pub mod net;

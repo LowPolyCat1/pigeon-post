@@ -4,12 +4,14 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 
 use crate::first_person::{LookAngles, view_to_world};
+use crate::grab::Grips;
 use crate::stamina::Stamina;
 
 pub const RADIUS: f32 = 0.3;
 /// Length of the straight part of the capsule, without the two caps.
 pub const CAPSULE_LENGTH: f32 = 0.4;
 pub const WALK_SPEED: f32 = 5.0;
+const PIGEON_DENSITY: f32 = 90.0;
 /// Horizontal acceleration toward the walk speed on the ground, in m/s².
 const GROUND_ACCELERATION: f32 = 40.0;
 /// Weaker than on the ground, so a jump or a shove keeps its momentum.
@@ -42,7 +44,7 @@ impl Plugin for PigeonPlugin {
 }
 
 #[derive(Component, Clone, Copy)]
-#[require(PigeonInput, Grounded, GroundVelocity, Stamina)]
+#[require(PigeonInput, Grounded, GroundVelocity, Grips, Stamina)]
 pub struct Pigeon;
 
 /// The input for the next fixed step. The simulation reads this, never the keyboard,
@@ -56,14 +58,21 @@ pub struct PigeonInput {
     pub jump: bool,
     /// Held down. Slows a fall while the pigeon is in the air.
     pub glide: bool,
+    /// Yaw and pitch of the view. The host aims the wings with it.
+    pub look: Vec2,
+    /// Held down, per wing: the left wing first. See [`crate::grab`].
+    pub grab: [bool; 2],
 }
 
 impl PigeonInput {
-    /// Takes the newest movement and glide. A jump stays set until a fixed step consumes it,
+    /// Takes the newest movement, glide, view and wings. A jump stays set until a fixed step
+    /// consumes it,
     /// because several frames can arrive between two fixed steps.
     pub fn merge(&mut self, frame: PigeonInput) {
         self.movement = frame.movement;
         self.glide = frame.glide;
+        self.look = frame.look;
+        self.grab = frame.grab;
         self.jump |= frame.jump;
     }
 }
@@ -88,6 +97,8 @@ pub fn pigeon_body() -> impl Bundle {
         Pigeon,
         RigidBody::Dynamic,
         Collider::capsule(RADIUS, CAPSULE_LENGTH),
+        // About 30 kg: heavy enough to shove a crate, light against the 800 kg ship.
+        ColliderDensity(PIGEON_DENSITY),
         // A capsule that tips over cannot walk.
         LockedAxes::ROTATION_LOCKED,
         // With friction, a pigeon pushed into a wall sticks to it. walk() brakes the pigeon instead.
@@ -107,6 +118,7 @@ pub fn pigeon_body() -> impl Bundle {
 /// The keys move the pigeon relative to the view, so the input turns with the camera.
 pub fn read_keyboard(
     keys: Res<ButtonInput<KeyCode>>,
+    buttons: Res<ButtonInput<MouseButton>>,
     look: Res<LookAngles>,
     mut messages: MessageWriter<InputMessage>,
 ) {
@@ -127,6 +139,11 @@ pub fn read_keyboard(
         movement: view_to_world(movement.normalize_or_zero(), look.yaw),
         jump: keys.just_pressed(KeyCode::Space),
         glide: keys.pressed(KeyCode::Space),
+        look: Vec2::new(look.yaw, look.pitch),
+        grab: [
+            buttons.pressed(MouseButton::Left),
+            buttons.pressed(MouseButton::Right),
+        ],
     }));
 }
 
@@ -277,19 +294,23 @@ mod tests {
     }
 
     #[test]
-    fn merge_takes_newest_movement_and_glide() {
+    fn merge_takes_newest_movement_glide_view_and_wings() {
         let mut input = PigeonInput {
             movement: Vec2::X,
-            jump: false,
             glide: true,
+            grab: [true, false],
+            ..default()
         };
         input.merge(PigeonInput {
             movement: Vec2::Y,
-            jump: false,
-            glide: false,
+            look: Vec2::new(0.5, 0.1),
+            grab: [false, true],
+            ..default()
         });
         assert_eq!(input.movement, Vec2::Y);
         assert!(!input.glide);
+        assert_eq!(input.look, Vec2::new(0.5, 0.1));
+        assert_eq!(input.grab, [false, true]);
     }
 
     #[test]

@@ -9,7 +9,7 @@ pub struct HudPlugin;
 
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_stamina_bar)
+        app.add_systems(Startup, (spawn_stamina_bar, spawn_crosshair))
             .add_systems(Update, update_stamina_bar);
     }
 }
@@ -39,6 +39,22 @@ fn spawn_stamina_bar(mut commands: Commands) {
             },
             BackgroundColor(Color::srgb(0.95, 0.85, 0.3)),
         ));
+}
+
+/// A dot in the center of the screen. The wings grab what is under it.
+fn spawn_crosshair(mut commands: Commands) {
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Percent(50.0),
+            top: Val::Percent(50.0),
+            width: Val::Px(4.0),
+            height: Val::Px(4.0),
+            margin: UiRect::all(Val::Px(-2.0)),
+            ..default()
+        },
+        BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
+    ));
 }
 
 fn update_stamina_bar(
