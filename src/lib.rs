@@ -1,3 +1,4 @@
+pub mod cloud_sea;
 pub mod hud;
 pub mod pigeon;
 pub mod stamina;

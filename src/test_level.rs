@@ -3,6 +3,7 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
+use crate::cloud_sea::SEA_LEVEL;
 use crate::pigeon::{CAPSULE_LENGTH, Pigeon, RADIUS, pigeon_body};
 
 const CAMERA_OFFSET: Vec3 = Vec3::new(0.0, 4.0, 8.0);
@@ -50,6 +51,17 @@ fn spawn_level(
         Mesh3d(meshes.add(Capsule3d::new(RADIUS, CAPSULE_LENGTH))),
         MeshMaterial3d(materials.add(Color::srgb(0.55, 0.57, 0.62))),
         Transform::from_xyz(0.0, 2.0, 0.0),
+    ));
+
+    // Only a picture: CloudSeaPlugin computes the depth without a collider.
+    commands.spawn((
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(400.0, 400.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgba(0.95, 0.95, 1.0, 0.85),
+            alpha_mode: AlphaMode::Blend,
+            ..default()
+        })),
+        Transform::from_xyz(0.0, SEA_LEVEL, 0.0),
     ));
 
     commands.spawn((
