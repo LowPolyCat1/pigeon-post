@@ -13,6 +13,7 @@ use pigeon_post::ship::ShipPlugin;
 use pigeon_post::sky::SkyPlugin;
 use pigeon_post::start_island::StartIslandPlugin;
 use pigeon_post::test_level::TestLevelPlugin;
+use pigeon_post::wind::WindLinesPlugin;
 
 fn main() -> AppExit {
     let mode = match net_mode() {
@@ -41,6 +42,7 @@ fn main() -> AppExit {
             HudPlugin,
             FirstPersonPlugin,
         ))
+        .add_plugins(WindLinesPlugin)
         .add_systems(Startup, start_network)
         .add_systems(Update, read_keyboard)
         .run()
