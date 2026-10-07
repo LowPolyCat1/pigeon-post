@@ -11,7 +11,8 @@ bevy = "=0.19.1"
 avian3d = "=0.7.0"
 bevy_replicon = "=0.44.2"
 bevy_replicon_renet = { version = "=0.20.0", features = ["renet_steam"] }
-# renet_steam requires steamworks 0.12; bevy_steamworks requires 0.13, so it is not used.
+# renet_steam 3.0.0 still pulls in steamworks 0.12.2, so the build holds both versions.
+# docs/stack.md gives the risk.
 steamworks = "=0.13.1"
 
 [features]
