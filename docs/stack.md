@@ -10,7 +10,7 @@ This document gives the engine, the crates, and the versions of this repository.
 | Physics | `avian3d` | 0.7.0 | Avian keeps its physics data in Bevy components. Replication of these components is simple. |
 | Replication | `bevy_replicon` | 0.44.2 | Replicon supports a listen server. It does no rollback. |
 | Transport | `bevy_replicon_renet` | 0.20.0 | This crate connects Replicon to renet. The `renet_steam` feature adds the Steam transport. |
-| Steam | `steamworks` | 0.12.2 | The Steam transport of renet uses this version. |
+| Steam | `steamworks` | 0.13.1 | The game calls Steam with this version. The Steam transport of renet uses 0.12.2. |
 
 All versions are exact. The minimum Rust version is 1.95.
 
@@ -24,7 +24,11 @@ Replicon does not predict movement. The game predicts the movement of the local 
 
 The game uses the Steam relay to connect the players. The relay removes the need to open a port on the router.
 
-The game does not use `bevy_steamworks`. Version 0.17 of `bevy_steamworks` requires `steamworks` 0.13. The Steam transport of renet requires `steamworks` 0.12. Two versions of the Steam SDK in one program are not tested. The game calls `steamworks` 0.12 directly.
+The program contains two versions of `steamworks`. The game uses 0.13.1. `renet_steam` 3.0.0 requires 0.12, so the Steam transport uses 0.12.2.
+
+Both versions load the same `steam_api64.dll`. Nobody has tested the two versions in one program. Before the game calls `steamworks` directly, test the call and the Steam transport together with the Steam client.
+
+The game does not use `bevy_steamworks`. Version 0.17 of `bevy_steamworks` requires `steamworks` 0.13, so the game can use it later.
 
 ## Upgrade rule
 
@@ -32,7 +36,7 @@ Upgrade the versions only between milestones. Upgrade all crates of this table i
 
 Before an upgrade, make sure that each crate supports the new Bevy version. If one crate does not support it, do not upgrade.
 
-If `bevy_replicon_renet` moves to `steamworks` 0.13, examine `bevy_steamworks` again.
+If `bevy_replicon_renet` moves to `steamworks` 0.13, the program contains one version again. Then remove the warning about two versions from this document.
 
 ## The toolchain
 
