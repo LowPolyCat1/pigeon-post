@@ -5,19 +5,20 @@ use bevy::camera::visibility::NoFrustumCulling;
 use bevy::light::NotShadowCaster;
 use bevy::pbr::{Material, MaterialPlugin};
 use bevy::prelude::*;
-use bevy::render::render_resource::AsBindGroup;
+use bevy::render::render_resource::{AsBindGroup, ShaderType};
 use bevy::shader::ShaderRef;
 use bevy_replicon::prelude::*;
 
 use crate::cloud_sea::SEA_LEVEL;
 use crate::net::NetMode;
+use crate::sky::{FOG_END, FOG_START, HORIZON, SUN_DIRECTION, linear};
 use crate::waves::{WaveUniform, wave_uniform};
 
 const SHADER: &str = "shaders/cloud_sea.wgsl";
-/// Larger than the view distance of the test level, so the edge stays out of sight.
-const SEA_SIZE: f32 = 240.0;
+/// The edge lies beyond the end of the fog, so it is never visible.
+const SEA_SIZE: f32 = 360.0;
 /// 1.5 m between vertices. The shortest wave is 7 m long, so it keeps its shape.
-const SEA_SUBDIVISIONS: u32 = 160;
+const SEA_SUBDIVISIONS: u32 = 240;
 
 pub struct CloudSeaRenderPlugin;
 
@@ -57,10 +58,21 @@ struct SeaTime {
     now: f32,
 }
 
+/// The look of the sea. It shares the sun and the fog with the sky.
+#[derive(ShaderType, Debug, Clone, Copy)]
+struct StyleUniform {
+    horizon: Vec4,
+    sun: Vec4,
+    /// x: fog start, y: fog end.
+    fog: Vec4,
+}
+
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 pub struct CloudSeaMaterial {
     #[uniform(0)]
     waves: WaveUniform,
+    #[uniform(1)]
+    style: StyleUniform,
 }
 
 impl Material for CloudSeaMaterial {
@@ -70,10 +82,6 @@ impl Material for CloudSeaMaterial {
 
     fn fragment_shader() -> ShaderRef {
         SHADER.into()
-    }
-
-    fn alpha_mode(&self) -> AlphaMode {
-        AlphaMode::Blend
     }
 }
 
@@ -142,6 +150,11 @@ fn add_sea_mesh(
         ),
         MeshMaterial3d(materials.add(CloudSeaMaterial {
             waves: wave_uniform(0.0, SEA_LEVEL),
+            style: StyleUniform {
+                horizon: linear(HORIZON),
+                sun: SUN_DIRECTION.normalize().extend(0.0),
+                fog: Vec4::new(FOG_START, FOG_END, 0.0, 0.0),
+            },
         })),
         Transform::default(),
         // The shader moves the vertices, so the bounds of the flat plane are wrong.
