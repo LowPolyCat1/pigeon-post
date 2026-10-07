@@ -2,6 +2,7 @@
 #![recursion_limit = "256"]
 
 pub mod cloud_sea;
+pub mod first_person;
 pub mod hud;
 pub mod net;
 pub mod pigeon;

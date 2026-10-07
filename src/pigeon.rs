@@ -3,6 +3,7 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
+use crate::first_person::{LookAngles, view_to_world};
 use crate::stamina::Stamina;
 
 pub const RADIUS: f32 = 0.3;
@@ -48,7 +49,7 @@ pub struct Pigeon;
 /// so a test can drive a pigeon.
 #[derive(Component, Default, Debug, Clone, Copy, PartialEq)]
 pub struct PigeonInput {
-    /// `x` is right, `y` is forward. The length is at most 1.
+    /// A direction on the world XZ plane: `x` along +X, `y` along -Z. The length is at most 1.
     pub movement: Vec2,
     /// Set on the frame of the press. A press can fall between two fixed steps,
     /// so it stays set until the next fixed step consumes it.
@@ -103,7 +104,12 @@ pub fn pigeon_body() -> impl Bundle {
     )
 }
 
-pub fn read_keyboard(keys: Res<ButtonInput<KeyCode>>, mut messages: MessageWriter<InputMessage>) {
+/// The keys move the pigeon relative to the view, so the input turns with the camera.
+pub fn read_keyboard(
+    keys: Res<ButtonInput<KeyCode>>,
+    look: Res<LookAngles>,
+    mut messages: MessageWriter<InputMessage>,
+) {
     let mut movement = Vec2::ZERO;
     if keys.pressed(KeyCode::KeyW) {
         movement.y += 1.0;
@@ -118,7 +124,7 @@ pub fn read_keyboard(keys: Res<ButtonInput<KeyCode>>, mut messages: MessageWrite
         movement.x -= 1.0;
     }
     messages.write(InputMessage(PigeonInput {
-        movement: movement.normalize_or_zero(),
+        movement: view_to_world(movement.normalize_or_zero(), look.yaw),
         jump: keys.just_pressed(KeyCode::Space),
         glide: keys.pressed(KeyCode::Space),
     }));
@@ -183,7 +189,6 @@ fn walk(
         } else {
             AIR_ACCELERATION
         };
-        // Forward is -Z, the direction the camera looks.
         let target =
             Vec2::new(input.movement.x, -input.movement.y) * WALK_SPEED + ground_velocity.0.xz();
         let horizontal = steer(velocity.xz(), target, acceleration * time.delta_secs());

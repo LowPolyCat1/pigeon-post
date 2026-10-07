@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use bevy_replicon_renet::RepliconRenetPlugins;
 use pigeon_post::cloud_sea::CloudSeaPlugin;
+use pigeon_post::first_person::FirstPersonPlugin;
 use pigeon_post::hud::HudPlugin;
 use pigeon_post::net::{NetMode, NetPlugin, parse_args, start_network, unix_time};
 use pigeon_post::pigeon::{PigeonPlugin, read_keyboard};
@@ -38,6 +39,7 @@ fn main() -> AppExit {
             StartIslandPlugin,
             TestLevelPlugin,
             HudPlugin,
+            FirstPersonPlugin,
         ))
         .add_systems(Startup, start_network)
         .add_systems(Update, read_keyboard)

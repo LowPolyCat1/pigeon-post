@@ -1,13 +1,11 @@
-//! The meshes of the replicated entities and the camera. `start_island` builds the scene.
+//! The meshes of the replicated entities and the camera. `start_island` builds the scene,
+//! and `first_person` moves the camera.
 
 use bevy::prelude::*;
 
-use crate::net::LocalPigeon;
 use crate::pigeon::{CAPSULE_LENGTH, Pigeon, RADIUS};
 use crate::props::{CRATE_SIZE, Crate};
 use crate::ship::{HULL_SIZE, RAIL_HEIGHT, Ship};
-
-const CAMERA_OFFSET: Vec3 = Vec3::new(0.0, 4.0, 8.0);
 
 pub struct TestLevelPlugin;
 
@@ -16,19 +14,12 @@ impl Plugin for TestLevelPlugin {
         app.add_systems(Startup, spawn_camera)
             .add_observer(add_pigeon_mesh)
             .add_observer(add_crate_mesh)
-            .add_observer(add_ship_mesh)
-            .add_systems(
-                PostUpdate,
-                follow_pigeon.before(TransformSystems::Propagate),
-            );
+            .add_observer(add_ship_mesh);
     }
 }
 
 fn spawn_camera(mut commands: Commands) {
-    commands.spawn((
-        Camera3d::default(),
-        Transform::from_translation(CAMERA_OFFSET).looking_at(Vec3::ZERO, Vec3::Y),
-    ));
+    commands.spawn((Camera3d::default(), Transform::default()));
 }
 
 /// The authority spawns the pigeons, and a client receives them. Each instance adds the mesh.
@@ -147,12 +138,4 @@ fn add_ship_mesh(
                 ship.spawn((Mesh3d(mesh), MeshMaterial3d(material), transform));
             }
         });
-}
-
-/// The offset is constant, so the camera keeps the rotation it spawned with.
-fn follow_pigeon(
-    pigeon: Single<&Transform, With<LocalPigeon>>,
-    mut camera: Single<&mut Transform, (With<Camera3d>, Without<LocalPigeon>)>,
-) {
-    camera.translation = pigeon.translation + CAMERA_OFFSET;
 }
