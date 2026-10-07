@@ -11,6 +11,7 @@ pub mod island_mesh;
 pub mod net;
 pub mod pigeon;
 pub mod props;
+pub mod sails;
 pub mod sea_render;
 pub mod ship;
 pub mod sky;

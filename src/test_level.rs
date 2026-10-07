@@ -11,6 +11,7 @@ use crate::controls::{
 use crate::helm::RudderAngle;
 use crate::pigeon::{CAPSULE_LENGTH, Pigeon, RADIUS};
 use crate::props::{CRATE_SIZE, Crate};
+use crate::sails::mast_height;
 use crate::ship::{Mount, RAIL_HEIGHT, ShipClass};
 
 pub struct TestLevelPlugin;
@@ -158,7 +159,6 @@ fn add_ship_mesh(
     let hull = materials.add(Color::srgb(0.45, 0.3, 0.2));
     let rail = materials.add(Color::srgb(0.75, 0.6, 0.4));
     let stripe = materials.add(Color::srgb(0.85, 0.2, 0.15));
-    let canvas = materials.add(Color::srgb(0.97, 0.94, 0.84));
 
     // Only pictures: the collider of the ship is the hull and the rails. The parts below have
     // no mass, so the buoyancy of the hull stays as tuned.
@@ -182,23 +182,14 @@ fn add_ship_mesh(
         parts.push((mesh, rail.clone(), Transform::from_xyz(x, rail_y, z)));
     }
 
-    // The main mast is the tallest. The sails hang just aft of each mast.
+    // The main mast is the tallest. `crate::sails` draws the sails.
     for (index, mast) in layout.masts.iter().enumerate() {
-        let height = if index == 0 {
-            layout.mast_height
-        } else {
-            layout.mast_height * 0.85
-        };
+        let height = mast_height(&layout, index);
         let foot = mast.translation;
         parts.push((
             meshes.add(Cylinder::new(0.15, height).mesh().resolution(8)),
             rail.clone(),
             Transform::from_translation(foot + Vec3::Y * height / 2.0),
-        ));
-        parts.push((
-            meshes.add(Cuboid::new(size.x * 0.8, height * 0.5, 0.08)),
-            canvas.clone(),
-            Transform::from_translation(foot + Vec3::new(0.0, height * 0.52, 0.2)),
         ));
     }
     let nest = layout.crows_nest.translation;
