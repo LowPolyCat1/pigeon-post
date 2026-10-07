@@ -6,10 +6,10 @@
 use std::f32::consts::{FRAC_PI_4, PI};
 
 use avian3d::prelude::*;
-use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::prelude::*;
 
-const SKY: Color = Color::srgb(0.53, 0.76, 0.96);
+use crate::sky::SUN_DIRECTION;
+
 /// The grass top of the main island is at y = 0. The spawn points of the pigeons and the
 /// crates stand on it.
 const MAIN_RADIUS: f32 = 10.0;
@@ -28,14 +28,12 @@ pub struct StartIslandPlugin;
 
 impl Plugin for StartIslandPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(ClearColor(SKY))
-            .insert_resource(GlobalAmbientLight {
-                color: Color::srgb(0.85, 0.9, 1.0),
-                brightness: 500.0,
-                ..default()
-            })
-            .add_systems(Startup, spawn_start_island)
-            .add_observer(add_sky_fog);
+        app.insert_resource(GlobalAmbientLight {
+            color: Color::srgb(0.85, 0.9, 1.0),
+            brightness: 500.0,
+            ..default()
+        })
+        .add_systems(Startup, spawn_start_island);
     }
 }
 
@@ -132,8 +130,8 @@ fn spawn_start_island(
             illuminance: 9000.0,
             ..default()
         },
-        // The cloud sea shader lights its waves from this direction too.
-        Transform::from_xyz(4.0, 10.0, 6.0).looking_at(Vec3::ZERO, Vec3::Y),
+        // The sun of the sky dome and the light of the cloud sea point the same way.
+        Transform::from_translation(SUN_DIRECTION).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 }
 
@@ -328,16 +326,4 @@ impl Builder<'_, '_, '_> {
             );
         }
     }
-}
-
-/// Fog in the sky color hides the edge of the cloud sea and makes far islets look far.
-fn add_sky_fog(add: On<Add, Camera3d>, mut commands: Commands) {
-    commands.entity(add.entity).insert(DistanceFog {
-        color: SKY,
-        falloff: FogFalloff::Linear {
-            start: 40.0,
-            end: 140.0,
-        },
-        ..default()
-    });
 }
