@@ -9,6 +9,7 @@ use pigeon_post::pigeon::{PigeonPlugin, read_keyboard};
 use pigeon_post::props::PropsPlugin;
 use pigeon_post::sea_render::CloudSeaRenderPlugin;
 use pigeon_post::ship::ShipPlugin;
+use pigeon_post::start_island::StartIslandPlugin;
 use pigeon_post::test_level::TestLevelPlugin;
 
 fn main() -> AppExit {
@@ -32,6 +33,7 @@ fn main() -> AppExit {
             NetPlugin,
             PropsPlugin,
             ShipPlugin,
+            StartIslandPlugin,
             TestLevelPlugin,
             HudPlugin,
         ))

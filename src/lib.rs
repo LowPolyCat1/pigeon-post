@@ -9,5 +9,6 @@ pub mod props;
 pub mod sea_render;
 pub mod ship;
 pub mod stamina;
+pub mod start_island;
 pub mod test_level;
 pub mod waves;
