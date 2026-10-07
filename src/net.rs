@@ -180,7 +180,7 @@ pub fn parse_args(
 
 fn unknown_argument(argument: &str) -> String {
     format!(
-        "The argument \"{argument}\" is not known. Use --host [PORT] or --connect ADDRESS:PORT."
+        "The argument \"{argument}\" is not known. Use --host [PORT], --connect ADDRESS:PORT or --ship a|b|c."
     )
 }
 
